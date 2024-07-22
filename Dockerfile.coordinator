@@ -1,0 +1,10 @@
+FROM rustlang/rust:nightly as builder
+WORKDIR /usr/src/coordinator
+COPY . .
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+COPY --from=builder /usr/src/coordinator/target/release/coordinator /usr/local/bin/coordinator
+RUN apt-get update && apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
+
+CMD ["coordinator"]

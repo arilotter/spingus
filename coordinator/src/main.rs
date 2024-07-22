@@ -1,0 +1,195 @@
+use anyhow::{Context, Result};
+use clap::Parser;
+use common::{create_kademlia_behavior, read_or_create_identity, GOSSIPSUB_RELAYED_PEERS_TOPIC};
+use futures::future::{select, Either};
+use futures::StreamExt;
+use libp2p::{
+    gossipsub::{self, IdentTopic},
+    identify, identity,
+    kad::{self, record::store::MemoryStore},
+    multiaddr::{Multiaddr, Protocol},
+    relay,
+    swarm::{NetworkBehaviour, Swarm, SwarmEvent},
+    PeerId,
+};
+use libp2p::{noise, tcp, yamux};
+use log::{debug, info, warn};
+use std::collections::HashSet;
+use std::net::IpAddr;
+use std::path::Path;
+use std::time::Duration;
+
+const TICK_INTERVAL: Duration = Duration::from_secs(15);
+const PORT_QUIC: u16 = 9091;
+const LOCAL_KEY_PATH: &str = "./local_key";
+
+#[derive(Debug, Parser)]
+#[clap(name = "relay node")]
+struct Opt {
+    /// Address to listen on.
+    #[clap(long, default_value = "0.0.0.0")]
+    listen_address: IpAddr,
+
+    /// If known, the external address of this node.
+    #[clap(long, env)]
+    external_address: Option<IpAddr>,
+}
+
+#[derive(NetworkBehaviour)]
+struct Behaviour {
+    gossipsub: gossipsub::Behaviour,
+    identify: identify::Behaviour,
+    kademlia: kad::Behaviour<MemoryStore>,
+    relay: relay::Behaviour,
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    let opt = Opt::parse();
+    let local_key = read_or_create_identity(Path::new(LOCAL_KEY_PATH))
+        .await
+        .context("Failed to read identity")?;
+
+    let mut swarm = create_swarm(local_key)?;
+
+    info!("My local peer id: {}", swarm.local_peer_id());
+
+    let address_quic = Multiaddr::from(opt.listen_address)
+        .with(Protocol::Udp(PORT_QUIC))
+        .with(Protocol::QuicV1);
+
+    swarm
+        .listen_on(address_quic.clone())
+        .expect("listen on quic");
+
+    info!("starting main loop");
+
+    let relayed_peers_topic = IdentTopic::new(GOSSIPSUB_RELAYED_PEERS_TOPIC);
+    let mut tick = futures_timer::Delay::new(TICK_INTERVAL);
+
+    let mut peers: HashSet<PeerId> = HashSet::new();
+
+    loop {
+        match select(swarm.next(), &mut tick).await {
+            Either::Left((event, _)) => match event.unwrap() {
+                SwarmEvent::NewListenAddr { address, .. } => {
+                    if let Some(external_ip) = opt.external_address {
+                        let external_address = address
+                            .replace(0, |_| Some(external_ip.into()))
+                            .expect("address.len > 1 and we always return `Some`");
+
+                        swarm.add_external_address(external_address);
+                    }
+
+                    let p2p_address = address.with(Protocol::P2p(*swarm.local_peer_id()));
+                    info!("Listening on {p2p_address}");
+                }
+                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                    info!("Connected to {peer_id}");
+                }
+                SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                    warn!("Connection to {peer_id} closed: {cause:?}");
+                    swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+                    peers.remove(&peer_id);
+                    info!("Removed {peer_id} from the routing table and peers list.");
+                }
+                SwarmEvent::Behaviour(event) => match event {
+                    BehaviourEvent::Relay(e) => {
+                        if let relay::Event::ReservationReqAccepted { src_peer_id, .. } = e {
+                            info!("Relay reservation accepted from {:?}", src_peer_id);
+                            peers.insert(src_peer_id);
+                        }
+                        debug!("Relay event: {:?}", e);
+                    }
+                    BehaviourEvent::Identify(identify::Event::Received { peer_id, info }) => {
+                        info!("Received identify info from {:?}", peer_id);
+                        swarm.add_external_address(info.observed_addr.clone());
+
+                        let peers_list_message = common::create_relayed_peers_message(&peers);
+
+                        if let Err(e) = swarm
+                            .behaviour_mut()
+                            .gossipsub
+                            .publish(relayed_peers_topic.hash(), peers_list_message)
+                        {
+                            warn!("Failed to publish relayed peers: {:?}", e);
+                        } else {
+                            info!("Published relayed peers");
+                        }
+                    }
+                    _ => debug!("Other behaviour event: {:?}", event),
+                },
+                event => {
+                    debug!("Other type of event: {:?}", event);
+                }
+            },
+            Either::Right(_) => {
+                tick = futures_timer::Delay::new(TICK_INTERVAL);
+                debug!(
+                    "external addrs: {:?}",
+                    swarm.external_addresses().collect::<Vec<&Multiaddr>>()
+                );
+            }
+        }
+    }
+}
+
+fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
+    let local_peer_id = PeerId::from(local_key.public());
+    debug!("Local peer id: {local_peer_id}");
+
+    let gossipsub_config = gossipsub::ConfigBuilder::default()
+        .validation_mode(gossipsub::ValidationMode::Permissive)
+        .build()
+        .expect("Valid config");
+
+    let mut gossipsub = gossipsub::Behaviour::new(
+        gossipsub::MessageAuthenticity::Signed(local_key.clone()),
+        gossipsub_config,
+    )
+    .expect("Correct configuration");
+
+    gossipsub.subscribe(&IdentTopic::new(GOSSIPSUB_RELAYED_PEERS_TOPIC))?;
+
+    let identify_config = identify::Behaviour::new(
+        identify::Config::new(common::IDENTIFY_PROTO.into(), local_key.public())
+            .with_interval(Duration::from_secs(60)),
+    );
+
+    let kademlia = create_kademlia_behavior(local_peer_id);
+
+    let behaviour = Behaviour {
+        gossipsub,
+        identify: identify_config,
+        kademlia,
+        relay: relay::Behaviour::new(
+            local_peer_id,
+            relay::Config {
+                max_reservations: usize::MAX,
+                max_reservations_per_peer: 100,
+                reservation_rate_limiters: Vec::default(),
+                circuit_src_rate_limiters: Vec::default(),
+                max_circuits: usize::MAX,
+                max_circuits_per_peer: 100,
+                ..Default::default()
+            },
+        ),
+    };
+
+    let swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
+        .with_tokio()
+        .with_tcp(
+            tcp::Config::default().port_reuse(true).nodelay(true),
+            noise::Config::new,
+            yamux::Config::default,
+        )?
+        .with_quic()
+        .with_dns()?
+        .with_behaviour(|_| behaviour)?
+        .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
+        .build();
+
+    Ok(swarm)
+}
