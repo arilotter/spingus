@@ -162,7 +162,7 @@ async fn main() -> Result<()> {
                                 message,
                             } => {
                                 if message.topic == chat_topic_hash {
-                                    debug!(
+                                    info!(
                                         "Received message from {:?}: {}",
                                         message.source,
                                         String::from_utf8(message.data).unwrap()
