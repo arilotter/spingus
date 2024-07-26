@@ -94,11 +94,20 @@ async fn main() -> Result<()> {
                     let p2p_address = address.with(Protocol::P2p(*swarm.local_peer_id()));
                     info!("Listening on {p2p_address}");
                 }
-                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                    info!("Connected to {peer_id}");
+                SwarmEvent::ConnectionEstablished {
+                    peer_id, endpoint, ..
+                } => {
+                    let addr = endpoint.get_remote_address();
+                    info!("Connected to {peer_id} thru endpoint {addr}");
                 }
-                SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                    warn!("Connection to {peer_id} closed: {cause:?}");
+                SwarmEvent::ConnectionClosed {
+                    peer_id,
+                    cause,
+                    endpoint,
+                    ..
+                } => {
+                    let addr = endpoint.get_remote_address();
+                    warn!("Connection to {peer_id} closed: {cause:?} thru endpoint {addr}");
                     swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                     info!("Removed {peer_id} from the routing table and peers list.");
                 }
