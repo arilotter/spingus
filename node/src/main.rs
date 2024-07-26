@@ -286,7 +286,7 @@ async fn main() -> Result<()> {
 
                 if swarm.connected_peers().next().is_some() {
                     info!("have at least one connected peer! :)");
-                    let my_peer_id = *swarm.local_peer_id();
+                    let my_peer_id = swarm.local_peer_id().clone();
                     swarm.behaviour_mut().gossipsub.publish(
                         chat_topic_hash,
                         format!("hello from {:?}", my_peer_id).as_bytes().to_vec(),
