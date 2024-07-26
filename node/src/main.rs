@@ -218,8 +218,9 @@ async fn main() -> Result<()> {
                         },
                         BehaviourEvent::Identify(e) => {
                             match e {
-                                identify::Event::Received { peer_id, .. } => {
+                                identify::Event::Received { peer_id, info } => {
                                     debug!("Received identify info from {:?}", peer_id);
+                                    swarm.add_external_address(info.observed_addr.clone());
                                 }
                                 identify::Event::Error { peer_id, error } => {
                                     match error {
@@ -262,9 +263,9 @@ async fn main() -> Result<()> {
                             } = e
                             {
                                 let peer_id = common::get_peer_id_from_key(&key);
-                                if !swarm.is_connected(&peer_id) {
-                                    let to_dial_addrs = common::decode_multiaddrs(&value);
-                                    for to_dial_addr in to_dial_addrs {
+                                let to_dial_addrs = common::decode_multiaddrs(&value);
+                                for to_dial_addr in to_dial_addrs {
+                                    if !swarm.is_connected(&peer_id) {
                                         swarm.dial(to_dial_addr).unwrap();
                                     }
                                 }
