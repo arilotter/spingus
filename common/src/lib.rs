@@ -5,47 +5,13 @@ use libp2p::{
     PeerId, StreamProtocol,
 };
 use log::info;
-use std::{collections::HashSet, path::Path};
+use std::path::Path;
 use tokio::fs;
 
 pub const GOSSIPSUB_RELAYED_PEERS_TOPIC: &str = "psyche-relayed-peers";
 pub const GOSSIPSUB_CHAT_TOPIC: &str = "test-app";
 pub const GOSSIPSUB_CHAT_FILE_TOPIC: &str = "test-app-file";
 pub const IDENTIFY_PROTO: &str = &"/test-app/0.1.0";
-
-pub fn create_relayed_peers_message(peers: &HashSet<PeerId>) -> Vec<u8> {
-    let num_peers = peers.len();
-    let mut msg = Vec::new();
-    msg.extend_from_slice(&(num_peers as u32).to_le_bytes());
-    for peer in peers.iter() {
-        let peer_bytes = peer.to_bytes();
-        msg.extend_from_slice(&(peer_bytes.len() as u32).to_le_bytes());
-        msg.extend_from_slice(&peer_bytes);
-        println!("encoding multiaddr: {}, {:?}", peer_bytes.len(), peer_bytes);
-    }
-    msg
-}
-
-pub fn parse_relayed_peers_message(data: &[u8]) -> Vec<PeerId> {
-    let num_multiaddrs = u32::from_le_bytes(data[0..4].try_into().unwrap()) as usize;
-    let mut multiaddrs = Vec::with_capacity(num_multiaddrs);
-    let mut offset = 4;
-    while offset < data.len() {
-        let multiaddr_len = u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
-        offset += 4;
-        let multiaddr_end = offset + multiaddr_len as usize;
-        let multiaddr_bytes = data[offset..multiaddr_end].to_vec();
-        offset = multiaddr_end;
-        offset += multiaddr_end;
-        println!(
-            "decoding multiaddr: {}, {:?}",
-            multiaddr_len, multiaddr_bytes
-        );
-        let multiaddr = PeerId::try_from(multiaddr_bytes).unwrap();
-        multiaddrs.push(multiaddr);
-    }
-    multiaddrs
-}
 
 pub async fn read_or_create_identity(path: &Path) -> Result<identity::Keypair> {
     if path.exists() {

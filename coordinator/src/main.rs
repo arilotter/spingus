@@ -14,7 +14,6 @@ use libp2p::{
 };
 use libp2p::{noise, tcp, yamux};
 use log::{debug, info, warn};
-use std::collections::HashSet;
 use std::net::IpAddr;
 use std::path::Path;
 use std::time::Duration;
@@ -66,10 +65,7 @@ async fn main() -> Result<()> {
 
     info!("starting main loop");
 
-    let relayed_peers_topic = IdentTopic::new(GOSSIPSUB_RELAYED_PEERS_TOPIC);
     let mut tick = futures_timer::Delay::new(TICK_INTERVAL);
-
-    let mut peers: HashSet<PeerId> = HashSet::new();
 
     loop {
         match select(swarm.next(), &mut tick).await {
@@ -92,32 +88,18 @@ async fn main() -> Result<()> {
                 SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                     warn!("Connection to {peer_id} closed: {cause:?}");
                     swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
-                    peers.remove(&peer_id);
                     info!("Removed {peer_id} from the routing table and peers list.");
                 }
                 SwarmEvent::Behaviour(event) => match event {
                     BehaviourEvent::Relay(e) => {
                         if let relay::Event::ReservationReqAccepted { src_peer_id, .. } = e {
                             info!("Relay reservation accepted from {:?}", src_peer_id);
-                            peers.insert(src_peer_id);
                         }
                         debug!("Relay event: {:?}", e);
                     }
                     BehaviourEvent::Identify(identify::Event::Received { peer_id, info }) => {
                         info!("Received identify info from {:?}", peer_id);
                         swarm.add_external_address(info.observed_addr.clone());
-
-                        let peers_list_message = common::create_relayed_peers_message(&peers);
-
-                        if let Err(e) = swarm
-                            .behaviour_mut()
-                            .gossipsub
-                            .publish(relayed_peers_topic.hash(), peers_list_message)
-                        {
-                            warn!("Failed to publish relayed peers: {:?}", e);
-                        } else {
-                            info!("Published relayed peers");
-                        }
                     }
                     _ => debug!("Other behaviour event: {:?}", event),
                 },

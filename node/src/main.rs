@@ -22,7 +22,6 @@ use libp2p::{
 use libp2p::{noise, ping, swarm, tcp, yamux};
 use log::{debug, error, info, warn};
 use protocol::FileExchangeCodec;
-use std::collections::HashSet;
 use std::iter;
 use std::net::IpAddr;
 use std::path::Path;
@@ -39,7 +38,6 @@ const FILE_EXCHANGE_PROTOCOL: StreamProtocol = StreamProtocol::new("/test-app-fi
 const PORT_QUIC: u16 = 9091;
 const PORT_TCP: u16 = 9092;
 const LOCAL_KEY_PATH: &str = "./local_key";
-const GOSSIPSUB_RELAYED_PEERS_TOPIC: &str = "test-app-relayed-peers";
 
 #[derive(Debug, Parser)]
 #[clap(name = "universal connectivity rust peer")]
@@ -154,17 +152,11 @@ async fn main() -> Result<()> {
 
     info!("starting main loop");
 
-    let relayed_peers_topic_hash = gossipsub::IdentTopic::new(GOSSIPSUB_RELAYED_PEERS_TOPIC).hash();
     let chat_topic_hash = gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_TOPIC).hash();
     let file_topic_hash = gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_FILE_TOPIC).hash();
 
     let mut tick = futures_timer::Delay::new(TICK_INTERVAL);
 
-    enum ReservationStatus {
-        Pending(HashSet<PeerId>),
-        Connected,
-    }
-    let mut reservation_status = ReservationStatus::Pending(HashSet::new());
     loop {
         match select(swarm.next(), &mut tick).await {
             Either::Left((event, _)) => match event.unwrap() {
@@ -216,25 +208,6 @@ async fn main() -> Result<()> {
                                     limit,
                                 } => {
                                     info!("Relay reservation accepted from {:?}, renewal: {:?}, limit: {:?}", relay_peer_id, renewal, limit);
-                                    match &reservation_status {
-                                        ReservationStatus::Pending(peers) => {
-                                            for peer_id in peers.iter() {
-                                                swarm
-                                                    .dial(
-                                                        opt.coordinator_address
-                                                            .clone()
-                                                            .with(Protocol::P2pCircuit)
-                                                            .with(Protocol::P2p(*peer_id)),
-                                                    )
-                                                    .unwrap();
-                                            }
-                                        }
-                                        ReservationStatus::Connected => {
-                                            // huh
-                                            error!("Got a Relay reservation accepted event while already connected. This shouldn't happen.");
-                                        }
-                                    }
-                                    reservation_status = ReservationStatus::Connected;
                                 }
                                 _ => {}
                             }
@@ -246,41 +219,6 @@ async fn main() -> Result<()> {
                                 propagation_source: _,
                                 message,
                             } => {
-                                if message.topic == relayed_peers_topic_hash {
-                                    let peer_ids =
-                                        common::parse_relayed_peers_message(&message.data);
-                                    info!(
-                                        "Received relayed peers message from {:?}: {:?}",
-                                        message.source, peer_ids
-                                    );
-                                    let not_connected_peers = peer_ids
-                                        .into_iter()
-                                        .filter(|peer_id| peer_id != swarm.local_peer_id())
-                                        .collect::<Vec<PeerId>>();
-
-                                    for peer_id in not_connected_peers {
-                                        match &mut reservation_status {
-                                            ReservationStatus::Pending(peers) => {
-                                                peers.insert(peer_id);
-                                            }
-                                            ReservationStatus::Connected => {
-                                                info!(
-                                            "Relayed peer {:?} is not connected. Dialing....",
-                                            peer_id
-                                        );
-                                                swarm
-                                                    .dial(
-                                                        opt.coordinator_address
-                                                            .clone()
-                                                            .with(Protocol::P2pCircuit)
-                                                            .with(Protocol::P2p(peer_id)),
-                                                    )
-                                                    .unwrap();
-                                            }
-                                        }
-                                    }
-                                    continue;
-                                }
                                 if message.topic == chat_topic_hash {
                                     debug!(
                                         "Received message from {:?}: {}",
@@ -419,7 +357,6 @@ fn make_gossipsub_behavior(keypair: identity::Keypair) -> Result<gossipsub::Beha
     )
     .expect("Correct configuration");
 
-    gossipsub.subscribe(&gossipsub::IdentTopic::new(GOSSIPSUB_RELAYED_PEERS_TOPIC))?;
     gossipsub.subscribe(&gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_TOPIC))?;
     gossipsub.subscribe(&gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_FILE_TOPIC))?;
 
