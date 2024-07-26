@@ -108,8 +108,7 @@ async fn main() -> Result<()> {
                         swarm.add_external_address(external_address);
                     }
 
-                    let p2p_address = address.with(Protocol::P2p(*swarm.local_peer_id()));
-                    info!("Listening on {p2p_address}");
+                    info!("Listening on {address}");
                 }
                 SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                     info!("Connected to {peer_id}");
