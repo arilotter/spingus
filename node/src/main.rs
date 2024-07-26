@@ -228,6 +228,12 @@ async fn main() -> Result<()> {
                         }
                         BehaviourEvent::Kademlia(e) => {
                             debug!("Kademlia event: {:?}", e);
+                            match e {
+                                x @ kad::Event::RoutingUpdated { .. } => {
+                                    info!("Routing updated for {:?}", x);
+                                }
+                                _ => {}
+                            }
                         }
                         BehaviourEvent::RequestResponse(r_r) => match r_r {
                             request_response::Event::Message { message, .. } => match message {
