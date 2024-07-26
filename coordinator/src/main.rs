@@ -106,13 +106,17 @@ async fn main() -> Result<()> {
                     BehaviourEvent::Relay(e) => {
                         if let relay::Event::ReservationReqAccepted { src_peer_id, .. } = e {
                             info!("Relay reservation accepted from {:?}", src_peer_id);
+                            let local_peer_id = *swarm.local_peer_id();
                             let peer_dialable_addrs: Vec<Multiaddr> = swarm
                                 .external_addresses()
                                 .map(|a| {
-                                    a.clone()
-                                        .with(Protocol::P2p(*swarm.local_peer_id()))
-                                        .with(Protocol::P2pCircuit)
-                                        .with(Protocol::P2p(src_peer_id))
+                                    let cloned = a.clone();
+                                    (match a.iter().last().unwrap() {
+                                        Protocol::P2p(p_id) if p_id == local_peer_id => cloned,
+                                        _ => cloned.with(Protocol::P2p(local_peer_id)),
+                                    })
+                                    .with(Protocol::P2pCircuit)
+                                    .with(Protocol::P2p(src_peer_id))
                                 })
                                 .collect();
                             let peer_dialable_addrs_bytes =
