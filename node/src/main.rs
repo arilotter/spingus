@@ -1,6 +1,6 @@
 mod protocol;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use common::{
     create_kademlia_behavior, read_or_create_identity, GOSSIPSUB_CHAT_FILE_TOPIC,
@@ -87,9 +87,10 @@ async fn main() -> Result<()> {
 
     swarm.listen_on(Multiaddr::from(opt.listen_address).with(Protocol::Tcp(PORT_TCP)))?;
 
-    info!("connecting to the coordinator...");
-    let p2p_circuit_listen_addr = opt.coordinator_address.clone().with(Protocol::P2pCircuit);
-    swarm.listen_on(p2p_circuit_listen_addr.clone()).unwrap();
+    let coordinator_peer_id: PeerId = match opt.coordinator_address.iter().last() {
+        Some(Protocol::P2p(p)) => Ok(p),
+        _ => Err(anyhow!("Coordinator address must be a p2p address")),
+    }?;
 
     info!("starting main loop");
 
@@ -195,9 +196,8 @@ async fn main() -> Result<()> {
                         },
                         BehaviourEvent::Identify(e) => {
                             match e {
-                                identify::Event::Received { peer_id, info } => {
+                                identify::Event::Received { peer_id, .. } => {
                                     debug!("Received identify info from {:?}", peer_id);
-                                    swarm.add_external_address(info.observed_addr.clone());
                                 }
                                 identify::Event::Error { peer_id, error } => {
                                     match error {
@@ -275,6 +275,13 @@ async fn main() -> Result<()> {
                     "external addrs: {:?}",
                     swarm.external_addresses().collect::<Vec<&Multiaddr>>()
                 );
+
+                if !swarm.is_connected(&coordinator_peer_id) {
+                    info!("not connected to the coordinator, connecting...");
+                    let p2p_circuit_listen_addr =
+                        opt.coordinator_address.clone().with(Protocol::P2pCircuit);
+                    swarm.listen_on(p2p_circuit_listen_addr.clone()).unwrap();
+                }
             }
         }
     }
