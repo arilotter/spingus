@@ -36,6 +36,7 @@ const KADEMLIA_PROTOCOL_NAME: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.
 pub fn create_kademlia_behavior(local_peer_id: PeerId) -> kad::Behaviour<MemoryStore> {
     let mut cfg = kad::Config::default();
     cfg.set_protocol_names(vec![KADEMLIA_PROTOCOL_NAME]);
+    cfg.set_caching(kad::Caching::Enabled { max_peers: 100 });
 
     let store = MemoryStore::new(local_peer_id);
     let kademlia = kad::Behaviour::with_config(local_peer_id, store, cfg);
