@@ -6,7 +6,6 @@ use common::{
     create_kademlia_behavior, read_or_create_identity, GOSSIPSUB_CHAT_FILE_TOPIC,
     GOSSIPSUB_CHAT_TOPIC, IDENTIFY_PROTO,
 };
-use core::panic;
 use futures::future::{select, Either};
 use futures::StreamExt;
 use libp2p::request_response::{self, ProtocolSupport};
@@ -76,6 +75,9 @@ async fn main() -> Result<()> {
         .context("Failed to read identity")?;
 
     let mut swarm = create_swarm(local_key)?;
+
+    info!("My local peer id: {}", swarm.local_peer_id());
+    info!("=============================");
 
     swarm.listen_on(
         Multiaddr::from(opt.listen_address)
