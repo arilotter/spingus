@@ -86,67 +86,6 @@ async fn main() -> Result<()> {
     swarm.listen_on(Multiaddr::from(opt.listen_address).with(Protocol::Tcp(PORT_TCP)))?;
 
     info!("connecting to the coordinator...");
-    if let Err(e) = swarm.dial(opt.coordinator_address.clone()) {
-        panic!(
-            "Failed to dial coordinator {0}: {e}",
-            opt.coordinator_address
-        );
-    }
-
-    let coordinator_peer_id = {
-        let mut learned_observed_addr = false;
-        let mut told_relay_observed_addr = false;
-        let mut coordinator_peer_id: Option<PeerId> = None;
-        loop {
-            match swarm.next().await.unwrap() {
-                SwarmEvent::NewListenAddr { .. } => {}
-                SwarmEvent::Dialing { .. } => {}
-                SwarmEvent::ConnectionEstablished {
-                    endpoint, peer_id, ..
-                } => {
-                    info!(
-                        "Connected to coordinator {peer_id} at {}",
-                        endpoint.get_remote_address()
-                    );
-                    coordinator_peer_id = Some(peer_id);
-                }
-                SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Sent {
-                    ..
-                })) => {
-                    info!("Told relay its public address");
-                    told_relay_observed_addr = true;
-                }
-                SwarmEvent::Behaviour(BehaviourEvent::Identify(identify::Event::Received {
-                    info: identify::Info { observed_addr, .. },
-                    ..
-                })) => {
-                    info!("Relay told us our observed address: {observed_addr}");
-                    learned_observed_addr = true;
-                }
-                event => debug!("{event:?}"),
-            }
-            if told_relay_observed_addr && learned_observed_addr {
-                if let Some(coordinator_peer_id) = coordinator_peer_id {
-                    info!("Nice. Disconnecting from the coordinator...");
-                    swarm.disconnect_peer_id(coordinator_peer_id).unwrap();
-                    loop {
-                        match swarm.next().await.unwrap() {
-                            e @ SwarmEvent::ConnectionClosed { .. } => {
-                                info!("ConnectionClosed: {e:?}");
-                                break;
-                            }
-                            _ => {}
-                        }
-                    }
-                    break coordinator_peer_id;
-                } else {
-                    panic!("Coordinator peer id not grabbed...");
-                }
-            }
-        }
-    };
-
-    info!("coordinator peer ID is {coordinator_peer_id}. Trying to add ourselves as relayed..");
     let p2p_circuit_listen_addr = opt.coordinator_address.clone().with(Protocol::P2pCircuit);
     swarm.listen_on(p2p_circuit_listen_addr.clone()).unwrap();
 
