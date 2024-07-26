@@ -8,7 +8,6 @@ use log::info;
 use std::path::Path;
 use tokio::fs;
 
-pub const GOSSIPSUB_RELAYED_PEERS_TOPIC: &str = "psyche-relayed-peers";
 pub const GOSSIPSUB_CHAT_TOPIC: &str = "test-app";
 pub const GOSSIPSUB_CHAT_FILE_TOPIC: &str = "test-app-file";
 pub const IDENTIFY_PROTO: &str = &"/test-app/0.1.0";
