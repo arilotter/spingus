@@ -20,6 +20,7 @@ use std::time::Duration;
 
 const TICK_INTERVAL: Duration = Duration::from_secs(15);
 const PORT_QUIC: u16 = 9091;
+const PORT_TCP: u16 = 9092;
 const LOCAL_KEY_PATH: &str = "./local_key";
 
 #[derive(Debug, Parser)]
@@ -62,6 +63,12 @@ async fn main() -> Result<()> {
     swarm
         .listen_on(address_quic.clone())
         .expect("listen on quic");
+
+    swarm.add_external_address(address_quic);
+
+    let address_tcp = Multiaddr::from(opt.listen_address).with(Protocol::Tcp(PORT_TCP));
+    swarm.listen_on(address_tcp.clone()).expect("listen on tcp");
+    swarm.add_external_address(address_tcp);
 
     info!("starting main loop");
 
