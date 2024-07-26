@@ -208,9 +208,8 @@ async fn main() -> Result<()> {
                         },
                         BehaviourEvent::Identify(e) => {
                             match e {
-                                identify::Event::Received { peer_id, info } => {
+                                identify::Event::Received { peer_id, .. } => {
                                     debug!("Received identify info from {:?}", peer_id);
-                                    swarm.add_external_address(info.observed_addr);
                                 }
                                 identify::Event::Error { peer_id, error } => {
                                     match error {
