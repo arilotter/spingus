@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use common::{create_kademlia_behavior, read_or_create_identity};
+use common::{create_kademlia_behavior, read_or_create_identity, GOSSIPSUB_CHAT_TOPIC};
 use futures::future::{select, Either};
 use futures::StreamExt;
 use libp2p::{
@@ -134,11 +134,14 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
         .build()
         .expect("Valid config");
 
-    let gossipsub = gossipsub::Behaviour::new(
+    let mut gossipsub = gossipsub::Behaviour::new(
         gossipsub::MessageAuthenticity::Signed(local_key.clone()),
         gossipsub_config,
     )
     .expect("Correct configuration");
+
+    gossipsub.subscribe(&IdentTopic::new(GOSSIPSUB_CHAT_TOPIC))?;
+    gossipsub.subscribe(&IdentTopic::new(GOSSIPSUB_CHAT_FILE_TOPIC))?;
 
     let identify_config = identify::Behaviour::new(
         identify::Config::new(common::IDENTIFY_PROTO.into(), local_key.public())
