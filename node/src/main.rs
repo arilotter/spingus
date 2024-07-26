@@ -281,6 +281,16 @@ async fn main() -> Result<()> {
                     let p2p_circuit_listen_addr =
                         opt.coordinator_address.clone().with(Protocol::P2pCircuit);
                     swarm.listen_on(p2p_circuit_listen_addr.clone()).unwrap();
+                    swarm.add_external_address(p2p_circuit_listen_addr);
+                }
+
+                if swarm.connected_peers().next().is_some() {
+                    info!("have at least one connected peer! :)");
+                    let my_peer_id = *swarm.local_peer_id();
+                    swarm.behaviour_mut().gossipsub.publish(
+                        chat_topic_hash,
+                        format!("hello from {:?}", my_peer_id).as_bytes().to_vec(),
+                    );
                 }
             }
         }
