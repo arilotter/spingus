@@ -24,6 +24,7 @@ use protocol::FileExchangeCodec;
 use std::iter;
 use std::net::IpAddr;
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},
@@ -287,9 +288,15 @@ async fn main() -> Result<()> {
                 if swarm.connected_peers().next().is_some() {
                     info!("have at least one connected peer! :)");
                     let my_peer_id = *swarm.local_peer_id();
+                    let now = SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs();
                     let res = swarm.behaviour_mut().gossipsub.publish(
                         chat_topic_hash.clone(),
-                        format!("hello from {:?}", my_peer_id).as_bytes().to_vec(),
+                        format!("hello from {:?} at time {}", my_peer_id, now)
+                            .as_bytes()
+                            .to_vec(),
                     );
                     if res.is_err() {
                         error!("failed to publish message {:?}", res);
