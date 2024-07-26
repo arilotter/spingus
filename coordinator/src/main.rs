@@ -110,6 +110,7 @@ async fn main() -> Result<()> {
                                 .external_addresses()
                                 .map(|a| {
                                     a.clone()
+                                        .with(Protocol::P2p(*swarm.local_peer_id()))
                                         .with(Protocol::P2pCircuit)
                                         .with(Protocol::P2p(src_peer_id))
                                 })
