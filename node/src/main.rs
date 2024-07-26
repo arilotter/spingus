@@ -8,6 +8,7 @@ use common::{
 };
 use futures::future::{select, Either};
 use futures::StreamExt;
+use libp2p::kad::{GetRecordOk, PeerRecord, Record};
 use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::{
     dcutr, gossipsub, identify, identity, kad,
@@ -168,15 +169,13 @@ async fn main() -> Result<()> {
                                         String::from_utf8(message.data).unwrap()
                                     );
                                     if let Some(peer_id) = message.source {
+                                        debug!("Found new peer: {peer_id}. Dialing...");
+
                                         if !swarm.is_connected(&peer_id) {
                                             swarm
-                                                .dial(
-                                                    opt.coordinator_address
-                                                        .clone()
-                                                        .with(Protocol::P2pCircuit)
-                                                        .with(Protocol::P2p(peer_id)),
-                                                )
-                                                .unwrap();
+                                                .behaviour_mut()
+                                                .kademlia
+                                                .get_record(common::get_peer_key(&peer_id));
                                         }
                                     }
                                     continue;
@@ -242,11 +241,24 @@ async fn main() -> Result<()> {
                         }
                         BehaviourEvent::Kademlia(e) => {
                             debug!("Kademlia event: {:?}", e);
-                            match e {
-                                x @ kad::Event::RoutingUpdated { .. } => {
-                                    info!("Routing updated for {:?}", x);
+                            if let kad::Event::OutboundQueryProgressed {
+                                result:
+                                    kad::QueryResult::GetRecord(kad::GetRecordResult::Ok(
+                                        GetRecordOk::FoundRecord(PeerRecord {
+                                            record: Record { key, value, .. },
+                                            ..
+                                        }),
+                                    )),
+                                ..
+                            } = e
+                            {
+                                let peer_id = common::get_peer_id_from_key(&key);
+                                if !swarm.is_connected(&peer_id) {
+                                    let to_dial_addrs = common::decode_multiaddrs(&value);
+                                    for to_dial_addr in to_dial_addrs {
+                                        swarm.dial(to_dial_addr).unwrap();
+                                    }
                                 }
-                                _ => {}
                             }
                         }
                         BehaviourEvent::RequestResponse(r_r) => match r_r {

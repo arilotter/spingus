@@ -1,7 +1,7 @@
 FROM rustlang/rust:nightly as builder
 WORKDIR /usr/src/coordinator
 COPY . .
-RUN cargo build --release
+RUN cargo build --release -p coordinator
 
 FROM debian:bookworm-slim
 COPY --from=builder /usr/src/coordinator/target/release/coordinator /usr/local/bin/coordinator

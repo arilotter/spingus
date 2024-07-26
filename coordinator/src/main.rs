@@ -6,6 +6,8 @@ use common::{
 };
 use futures::future::{select, Either};
 use futures::StreamExt;
+use libp2p::kad::store::RecordStore;
+use libp2p::kad::Record;
 use libp2p::{
     gossipsub::{self, IdentTopic},
     identify, identity,
@@ -104,6 +106,29 @@ async fn main() -> Result<()> {
                     BehaviourEvent::Relay(e) => {
                         if let relay::Event::ReservationReqAccepted { src_peer_id, .. } = e {
                             info!("Relay reservation accepted from {:?}", src_peer_id);
+                            let peer_dialable_addrs: Vec<Multiaddr> = swarm
+                                .external_addresses()
+                                .map(|a| {
+                                    a.clone()
+                                        .with(Protocol::P2pCircuit)
+                                        .with(Protocol::P2p(src_peer_id))
+                                })
+                                .collect();
+                            let peer_dialable_addrs_bytes =
+                                common::encode_multiaddrs(&peer_dialable_addrs);
+                            swarm
+                                .behaviour_mut()
+                                .kademlia
+                                .store_mut()
+                                .put(Record::new(
+                                    common::get_peer_key(&src_peer_id),
+                                    peer_dialable_addrs_bytes,
+                                ))
+                                .unwrap();
+                        } else if let relay::Event::ReservationTimedOut { src_peer_id, .. } = e {
+                            info!("Relay reservation timed out from {:?}", src_peer_id);
+                            let key = kad::record::Key::from(Vec::<u8>::from(src_peer_id));
+                            swarm.behaviour_mut().kademlia.store_mut().remove(&key);
                         }
                         debug!("Relay event: {:?}", e);
                     }

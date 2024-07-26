@@ -8,3 +8,4 @@ libp2p = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
 tokio = { workspace = true }
+bincode = { workspace = true }
