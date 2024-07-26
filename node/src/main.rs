@@ -286,7 +286,6 @@ async fn main() -> Result<()> {
                 }
 
                 if swarm.connected_peers().next().is_some() {
-                    info!("have at least one connected peer! :)");
                     let my_peer_id = *swarm.local_peer_id();
                     let now = SystemTime::now()
                         .duration_since(UNIX_EPOCH)
