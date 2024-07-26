@@ -115,8 +115,11 @@ async fn main() -> Result<()> {
 
                     info!("Listening on {address}");
                 }
-                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                    info!("Connected to {peer_id}");
+                SwarmEvent::ConnectionEstablished {
+                    peer_id, endpoint, ..
+                } => {
+                    let addr = endpoint.get_remote_address();
+                    info!("Connected to {peer_id} at {addr}");
                 }
                 SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                     warn!("Failed to dial {peer_id:?}: {error}");
@@ -124,8 +127,15 @@ async fn main() -> Result<()> {
                 SwarmEvent::IncomingConnectionError { error, .. } => {
                     warn!("{:#}", anyhow::Error::from(error))
                 }
-                SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                    warn!("Connection to {peer_id} closed: {cause:?}");
+                SwarmEvent::ConnectionClosed {
+                    peer_id,
+                    cause,
+                    endpoint,
+                    ..
+                } => {
+                    let addr = endpoint.get_remote_address();
+
+                    warn!("Connection to {peer_id} closed: {cause:?} at {addr}");
                     swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                     info!("Removed {peer_id} from the routing table (if it was in there).");
                     // if !swarm.connected_peers().any(|p| p == &coordinator_peer_id) {
