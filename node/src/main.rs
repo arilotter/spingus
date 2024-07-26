@@ -167,6 +167,18 @@ async fn main() -> Result<()> {
                                         message.source,
                                         String::from_utf8(message.data).unwrap()
                                     );
+                                    if let Some(peer_id) = message.source {
+                                        if !swarm.is_connected(&peer_id) {
+                                            swarm
+                                                .dial(
+                                                    opt.coordinator_address
+                                                        .clone()
+                                                        .with(Protocol::P2pCircuit)
+                                                        .with(Protocol::P2p(peer_id)),
+                                                )
+                                                .unwrap();
+                                        }
+                                    }
                                     continue;
                                 }
 
@@ -197,8 +209,9 @@ async fn main() -> Result<()> {
                         },
                         BehaviourEvent::Identify(e) => {
                             match e {
-                                identify::Event::Received { peer_id, .. } => {
+                                identify::Event::Received { peer_id, info } => {
                                     debug!("Received identify info from {:?}", peer_id);
+                                    swarm.add_external_address(info.observed_addr);
                                 }
                                 identify::Event::Error { peer_id, error } => {
                                     match error {
