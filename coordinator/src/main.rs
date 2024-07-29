@@ -17,7 +17,6 @@ use libp2p::{
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     PeerId,
 };
-use libp2p::{noise, tcp, yamux};
 use log::{debug, info, warn};
 use std::net::IpAddr;
 use std::path::Path;
@@ -25,7 +24,6 @@ use std::time::Duration;
 
 const TICK_INTERVAL: Duration = Duration::from_secs(15);
 const PORT_QUIC: u16 = 9091;
-const PORT_TCP: u16 = 9092;
 const LOCAL_KEY_PATH: &str = "./local_key";
 
 #[derive(Debug, Parser)]
@@ -70,10 +68,6 @@ async fn main() -> Result<()> {
         .expect("listen on quic");
 
     swarm.add_external_address(address_quic);
-
-    let address_tcp = Multiaddr::from(opt.listen_address).with(Protocol::Tcp(PORT_TCP));
-    swarm.listen_on(address_tcp.clone()).expect("listen on tcp");
-    swarm.add_external_address(address_tcp);
 
     info!("starting main loop");
 
@@ -212,11 +206,6 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
 
     let swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
         .with_tokio()
-        .with_tcp(
-            tcp::Config::default().port_reuse(true).nodelay(true),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
         .with_quic()
         .with_dns()?
         .with_behaviour(|_| behaviour)?

@@ -34,7 +34,6 @@ libp2p = { version = "0.52.3", features = [
     "quic",
     "request-response",
     "dns",
-    "tcp",
     "dcutr",
     "memory-connection-limits",
     "noise",

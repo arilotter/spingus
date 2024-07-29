@@ -19,7 +19,7 @@ use libp2p::{
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     PeerId, StreamProtocol,
 };
-use libp2p::{noise, ping, swarm, tcp, yamux};
+use libp2p::{noise, ping, swarm, yamux};
 use log::{debug, error, info, warn};
 use protocol::FileExchangeCodec;
 use std::iter;
@@ -37,7 +37,6 @@ use crate::protocol::FileRequest;
 const TICK_INTERVAL: Duration = Duration::from_secs(5);
 const FILE_EXCHANGE_PROTOCOL: StreamProtocol = StreamProtocol::new("/test-app-file/1");
 const PORT_QUIC: u16 = 9091;
-const PORT_TCP: u16 = 9092;
 const LOCAL_KEY_PATH: &str = "./local_key";
 
 #[derive(Debug, Parser)]
@@ -86,8 +85,6 @@ async fn main() -> Result<()> {
             .with(Protocol::Udp(PORT_QUIC))
             .with(Protocol::QuicV1),
     )?;
-
-    swarm.listen_on(Multiaddr::from(opt.listen_address).with(Protocol::Tcp(PORT_TCP)))?;
 
     let coordinator_peer_id: PeerId = match opt.coordinator_address.iter().last() {
         Some(Protocol::P2p(p)) => Ok(p),
@@ -385,11 +382,6 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
 
     let swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
         .with_tokio()
-        .with_tcp(
-            tcp::Config::default().port_reuse(true).nodelay(true),
-            noise::Config::new,
-            yamux::Config::default,
-        )?
         .with_quic()
         .with_dns()?
         .with_relay_client(noise::Config::new, yamux::Config::default)?
