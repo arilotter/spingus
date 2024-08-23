@@ -21,7 +21,7 @@ use log::{debug, info, warn};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, Gauge, List, ListItem, Paragraph};
+use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use ratatui::Terminal;
 use std::collections::{HashSet, VecDeque};
 use std::io::stdout;
@@ -321,15 +321,11 @@ fn draw_tui(
         );
         f.render_widget(connected_clients, chunks[0]);
 
-        let avg_data_per_sec = Gauge::default()
-            .block(
-                Block::default()
-                    .title("Average Data Received per Second")
-                    .borders(Borders::ALL),
-            )
-            .style(Style::default().fg(Color::Yellow))
-            .percent(stats.avg_data_per_sec as u16 / 100)
-            .label(format!("{:.2} bytes/s", stats.avg_data_per_sec));
+        let avg_data_per_sec = Paragraph::new(format!("{:.2} bytes/s", stats.avg_data_per_sec)).block(
+            Block::default()
+                .title("Average Data Received per Second")
+                .borders(Borders::ALL),
+        );
         f.render_widget(avg_data_per_sec, chunks[1]);
 
         let log_messages = List::new(
