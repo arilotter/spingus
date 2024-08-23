@@ -212,7 +212,9 @@ async fn main() -> Result<()> {
                     while data_received.len() > ROLLING_AVERAGE_WINDOW {
                         data_received.pop_front();
                     }
-                    let data_received_sum: usize = data_received.iter().sum();
+                    let data_received_sum: f64 =
+                        data_received.iter().map(|c| *c as f64).sum::<f64>()
+                            / data_received.len() as f64;
                     let avg_data_per_tick =
                         data_received_sum as f64 / (Instant::now() - last_tick).as_secs_f64();
                     let avg_data_per_second = avg_data_per_tick * TICK_INTERVAL.as_secs_f64();
@@ -343,7 +345,7 @@ fn draw_tui(
 
         let data_per_sec_per_client = List::new(stats.data_per_sec_per_client.iter().map(
             |(peer_id, data_per_sec)| {
-                ListItem::new(format!("{}: {:.2} bytes/s", peer_id, data_per_sec))
+                ListItem::new(format!("{}: {}/s", peer_id, convert_bytes(*data_per_sec)))
             },
         ))
         .block(
@@ -354,7 +356,7 @@ fn draw_tui(
         f.render_widget(data_per_sec_per_client, chunks[1]);
 
         let total_data_per_sec = Paragraph::new(format!(
-            "Rolling avg of Data Received per Second: {}/",
+            "Rolling avg of Data Received per Second: {}/s",
             convert_bytes(stats.total_data_per_sec)
         ))
         .block(
