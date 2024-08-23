@@ -207,6 +207,7 @@ async fn main() -> Result<()> {
             },
             Either::Right(_) => {
                 let mut data_per_sec_per_client = HashMap::new();
+                let mut total_data_per_sec = 0.0;
                 for (peer_id, data_received) in data_received_per_tick.iter_mut() {
                     while data_received.len() > ROLLING_AVERAGE_WINDOW {
                         data_received.pop_front();
@@ -215,11 +216,14 @@ async fn main() -> Result<()> {
                     let avg_data_per_sec =
                         data_received_this_tick as f64 / (Instant::now() - last_tick).as_secs_f64();
                     data_per_sec_per_client.insert(*peer_id, avg_data_per_sec);
+                    total_data_per_sec += avg_data_per_sec;
+                    data_received.clear(); // Reset data_received for the next tick
                 }
 
                 let stats = Stats {
                     connected_clients: connected_clients.lock().unwrap().iter().cloned().collect(),
                     data_per_sec_per_client,
+                    total_data_per_sec,
                     log_messages: log_messages.lock().unwrap().iter().cloned().collect(),
                 };
 
@@ -294,6 +298,7 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
 struct Stats {
     connected_clients: Vec<PeerId>,
     data_per_sec_per_client: HashMap<PeerId, f64>,
+    total_data_per_sec: f64,
     log_messages: Vec<String>,
 }
 
@@ -314,9 +319,10 @@ fn draw_tui(
             .margin(1)
             .constraints(
                 [
-                    Constraint::Percentage(33),
-                    Constraint::Percentage(33),
-                    Constraint::Percentage(34),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
                 ]
                 .as_ref(),
             )
@@ -347,6 +353,14 @@ fn draw_tui(
         );
         f.render_widget(data_per_sec_per_client, chunks[1]);
 
+        let total_data_per_sec = Paragraph::new(format!("Total Data Received per Second: {:.2} bytes/s", stats.total_data_per_sec))
+            .block(
+                Block::default()
+                    .title("Total Data per Second")
+                    .borders(Borders::ALL),
+            );
+        f.render_widget(total_data_per_sec, chunks[2]);
+
         let log_messages = List::new(
             stats
                 .log_messages
@@ -354,7 +368,7 @@ fn draw_tui(
                 .map(|msg| ListItem::new(msg.clone())),
         )
         .block(Block::default().title("Log Messages").borders(Borders::ALL));
-        f.render_widget(log_messages, chunks[2]);
+        f.render_widget(log_messages, chunks[3]);
     })?;
     Ok(())
 }
