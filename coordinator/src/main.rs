@@ -212,12 +212,12 @@ async fn main() -> Result<()> {
                     while data_received.len() > ROLLING_AVERAGE_WINDOW {
                         data_received.pop_front();
                     }
-                    let data_received_this_tick: usize = data_received.iter().sum();
-                    let avg_data_per_sec =
-                        data_received_this_tick as f64 / (Instant::now() - last_tick).as_secs_f64();
-                    data_per_sec_per_client.insert(*peer_id, avg_data_per_sec);
-                    total_data_per_sec += avg_data_per_sec;
-                    data_received.clear(); // Reset data_received for the next tick
+                    let data_received_sum: usize = data_received.iter().sum();
+                    let avg_data_per_tick =
+                        data_received_sum as f64 / (Instant::now() - last_tick).as_secs_f64();
+                    let avg_data_per_second = avg_data_per_tick * TICK_INTERVAL.as_secs_f64();
+                    data_per_sec_per_client.insert(*peer_id, avg_data_per_second);
+                    total_data_per_sec += avg_data_per_second;
                 }
 
                 let stats = Stats {
@@ -353,12 +353,15 @@ fn draw_tui(
         );
         f.render_widget(data_per_sec_per_client, chunks[1]);
 
-        let total_data_per_sec = Paragraph::new(format!("Total Data Received per Second: {:.2} bytes/s", stats.total_data_per_sec))
-            .block(
-                Block::default()
-                    .title("Total Data per Second")
-                    .borders(Borders::ALL),
-            );
+        let total_data_per_sec = Paragraph::new(format!(
+            "Total Data Received per Second: {:.2} bytes/s",
+            stats.total_data_per_sec
+        ))
+        .block(
+            Block::default()
+                .title("Total Data per Second")
+                .borders(Borders::ALL),
+        );
         f.render_widget(total_data_per_sec, chunks[2]);
 
         let log_messages = List::new(
