@@ -354,8 +354,8 @@ fn draw_tui(
         f.render_widget(data_per_sec_per_client, chunks[1]);
 
         let total_data_per_sec = Paragraph::new(format!(
-            "Total Data Received per Second: {:.2} bytes/s",
-            stats.total_data_per_sec
+            "Rolling avg of Data Received per Second: {}/",
+            convert_bytes(stats.total_data_per_sec)
         ))
         .block(
             Block::default()
@@ -374,4 +374,26 @@ fn draw_tui(
         f.render_widget(log_messages, chunks[3]);
     })?;
     Ok(())
+}
+
+fn convert_bytes(bytes: f64) -> String {
+    const KB: f64 = 1024.0;
+    const MB: f64 = KB * 1024.0;
+    const GB: f64 = MB * 1024.0;
+    const TB: f64 = GB * 1024.0;
+    const PB: f64 = TB * 1024.0;
+
+    if bytes < KB {
+        format!("{} B", bytes)
+    } else if bytes < MB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else if bytes < GB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes < TB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes < PB {
+        format!("{:.2} TB", bytes as f64 / TB as f64)
+    } else {
+        format!("{:.2} PB", bytes as f64 / PB as f64)
+    }
 }
