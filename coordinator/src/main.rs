@@ -23,7 +23,7 @@ use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
 use ratatui::Terminal;
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::stdout;
 use std::net::IpAddr;
 use std::path::Path;
@@ -33,6 +33,7 @@ use tokio::sync::mpsc;
 const TICK_INTERVAL: Duration = Duration::from_secs(1);
 const PORT_QUIC: u16 = 9091;
 const LOCAL_KEY_PATH: &str = "./local_key";
+const ROLLING_AVERAGE_WINDOW: usize = 30;
 
 #[derive(Debug, Parser)]
 #[clap(name = "relay node")]
@@ -95,7 +96,7 @@ async fn main() -> Result<()> {
 
     let connected_clients = Arc::new(Mutex::new(HashSet::new()));
     let log_messages = Arc::new(Mutex::new(VecDeque::new()));
-    let mut data_received_per_tick: VecDeque<usize> = Default::default();
+    let mut data_received_per_tick: HashMap<PeerId, VecDeque<usize>> = Default::default();
     loop {
         match select(swarm.next(), &mut tick).await {
             Either::Left((event, _)) => match event.unwrap() {
@@ -123,6 +124,7 @@ async fn main() -> Result<()> {
                         .unwrap()
                         .push_back(format!("Connected to {peer_id} thru endpoint {addr}"));
                     connected_clients.lock().unwrap().insert(peer_id);
+                    data_received_per_tick.entry(peer_id).or_default();
                 }
                 SwarmEvent::ConnectionClosed {
                     peer_id,
@@ -136,6 +138,7 @@ async fn main() -> Result<()> {
                     ));
                     swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                     connected_clients.lock().unwrap().remove(&peer_id);
+                    data_received_per_tick.remove(&peer_id);
                     log_messages.lock().unwrap().push_back(format!(
                         "Removed {peer_id} from the routing table and peers list."
                     ));
@@ -189,7 +192,12 @@ async fn main() -> Result<()> {
                         swarm.add_external_address(info.observed_addr.clone());
                     }
                     BehaviourEvent::Gossipsub(gossipsub::Event::Message { message, .. }) => {
-                        data_received_per_tick.push_back(message.data.len());
+                        if let Some(peer_id) = message.source {
+                            data_received_per_tick
+                                .entry(peer_id)
+                                .or_default()
+                                .push_back(message.data.len());
+                        }
                     }
                     _ => debug!("Other behaviour event: {:?}", event),
                 },
@@ -198,14 +206,20 @@ async fn main() -> Result<()> {
                 }
             },
             Either::Right(_) => {
-                let data_received_this_tick: usize = data_received_per_tick.iter().sum();
-                data_received_per_tick.clear();
-                let avg_data_per_sec =
-                    data_received_this_tick as f64 / (Instant::now() - last_tick).as_secs_f64();
+                let mut data_per_sec_per_client = HashMap::new();
+                for (peer_id, data_received) in data_received_per_tick.iter_mut() {
+                    while data_received.len() > ROLLING_AVERAGE_WINDOW {
+                        data_received.pop_front();
+                    }
+                    let data_received_this_tick: usize = data_received.iter().sum();
+                    let avg_data_per_sec =
+                        data_received_this_tick as f64 / (Instant::now() - last_tick).as_secs_f64();
+                    data_per_sec_per_client.insert(*peer_id, avg_data_per_sec);
+                }
 
                 let stats = Stats {
                     connected_clients: connected_clients.lock().unwrap().iter().cloned().collect(),
-                    avg_data_per_sec,
+                    data_per_sec_per_client,
                     log_messages: log_messages.lock().unwrap().iter().cloned().collect(),
                 };
 
@@ -279,7 +293,7 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
 
 struct Stats {
     connected_clients: Vec<PeerId>,
-    avg_data_per_sec: f64,
+    data_per_sec_per_client: HashMap<PeerId, f64>,
     log_messages: Vec<String>,
 }
 
@@ -321,12 +335,17 @@ fn draw_tui(
         );
         f.render_widget(connected_clients, chunks[0]);
 
-        let avg_data_per_sec = Paragraph::new(format!("{:.2} bytes/s", stats.avg_data_per_sec)).block(
+        let data_per_sec_per_client = List::new(stats.data_per_sec_per_client.iter().map(
+            |(peer_id, data_per_sec)| {
+                ListItem::new(format!("{}: {:.2} bytes/s", peer_id, data_per_sec))
+            },
+        ))
+        .block(
             Block::default()
-                .title("Average Data Received per Second")
+                .title("Data Received per Second per Client")
                 .borders(Borders::ALL),
         );
-        f.render_widget(avg_data_per_sec, chunks[1]);
+        f.render_widget(data_per_sec_per_client, chunks[1]);
 
         let log_messages = List::new(
             stats
