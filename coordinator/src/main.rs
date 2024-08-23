@@ -228,6 +228,7 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
 
     let gossipsub_config = gossipsub::ConfigBuilder::default()
         .validation_mode(gossipsub::ValidationMode::Permissive)
+        .max_transmit_size(20 * 1024 * 1024)
         .build()
         .expect("Valid config");
 

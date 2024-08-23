@@ -325,17 +325,19 @@ async fn main() -> Result<()> {
                         .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_secs();
-                    
+
                     // Generate random data of size DATA_SIZE_MB
                     let mut data = vec![0u8; DATA_SIZE_MB * 1024 * 1024];
                     rand::thread_rng().fill(&mut data[..]);
-                    
+
                     let res = swarm.behaviour_mut().gossipsub.publish(
                         chat_topic_hash.clone(),
                         data, // Send the random data instead of the "hello" message
                     );
                     if res.is_err() {
                         error!("failed to publish message {:?}", res);
+                    } else {
+                        info!("published message :)");
                     }
                 }
             }
@@ -357,6 +359,7 @@ fn make_gossipsub_behavior(keypair: identity::Keypair) -> Result<gossipsub::Beha
         .mesh_outbound_min(1)
         .mesh_n_low(1)
         .flood_publish(true)
+        .max_transmit_size(DATA_SIZE_MB * 1024 * 1024 * 2)
         .build()
         .expect("Valid config");
 
