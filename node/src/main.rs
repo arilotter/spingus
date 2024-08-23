@@ -22,6 +22,7 @@ use libp2p::{
 use libp2p::{noise, ping, swarm, yamux};
 use log::{debug, error, info, warn};
 use protocol::FileExchangeCodec;
+use rand::Rng; // Add this line
 use std::iter;
 use std::net::IpAddr;
 use std::path::Path;
@@ -38,6 +39,7 @@ const TICK_INTERVAL: Duration = Duration::from_secs(5);
 const FILE_EXCHANGE_PROTOCOL: StreamProtocol = StreamProtocol::new("/test-app-file/1");
 const PORT_QUIC: u16 = 9091;
 const LOCAL_KEY_PATH: &str = "./local_key";
+const DATA_SIZE_MB: usize = 1; // Add this line to configure the size of random data to send
 
 #[derive(Debug, Parser)]
 #[clap(name = "universal connectivity rust peer")]
@@ -323,11 +325,14 @@ async fn main() -> Result<()> {
                         .duration_since(UNIX_EPOCH)
                         .unwrap()
                         .as_secs();
+                    
+                    // Generate random data of size DATA_SIZE_MB
+                    let mut data = vec![0u8; DATA_SIZE_MB * 1024 * 1024];
+                    rand::thread_rng().fill(&mut data[..]);
+                    
                     let res = swarm.behaviour_mut().gossipsub.publish(
                         chat_topic_hash.clone(),
-                        format!("hello from {:?} at time {}", my_peer_id, now)
-                            .as_bytes()
-                            .to_vec(),
+                        data, // Send the random data instead of the "hello" message
                     );
                     if res.is_err() {
                         error!("failed to publish message {:?}", res);

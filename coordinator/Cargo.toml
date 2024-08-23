@@ -16,3 +16,4 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 common = { path = "../common" }
 async-trait = { workspace = true }
+ratatui = "0.28.0"
