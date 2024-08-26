@@ -378,17 +378,17 @@ fn draw_tui(
             .data(&bw_history)])
         .block(
             Block::default()
-                .title("Bandwidth over Time")
+                .title(format!(
+                    "Bandwidth {}",
+                    convert_bytes(stats.total_data_per_sec)
+                ))
                 .borders(Borders::ALL),
         )
         .x_axis(Axis::default().title("Time").labels(vec!["0", "30", "60"]))
-        .y_axis(Axis::default()
-                .title("Bandwidth (bytes/s)")
-                .labels(vec![
-                    convert_bytes(0.0),
-                    convert_bytes(stats.total_data_per_sec),
-                    convert_bytes(5.0 * 1024.0 * 1024.0),
-                ]));
+        .y_axis(Axis::default().title("Bandwidth (bytes/s)").labels(vec![
+            convert_bytes(0.0),
+            convert_bytes(5.0 * 1024.0 * 1024.0),
+        ]));
         f.render_widget(bandwidth_graph, chunks[2]);
 
         let log_messages = List::new(
