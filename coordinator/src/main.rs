@@ -332,11 +332,10 @@ fn draw_tui(
             .margin(1)
             .constraints(
                 [
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(20),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
+                    Constraint::Percentage(25),
                 ]
                 .as_ref(),
             )
@@ -367,26 +366,6 @@ fn draw_tui(
         );
         f.render_widget(data_per_sec_per_client, chunks[1]);
 
-        let total_data_per_sec = Paragraph::new(format!(
-            "Rolling avg of Data Received per Second: {}/s",
-            convert_bytes(stats.total_data_per_sec)
-        ))
-        .block(
-            Block::default()
-                .title("Total Data per Second")
-                .borders(Borders::ALL),
-        );
-        f.render_widget(total_data_per_sec, chunks[2]);
-
-        let log_messages = List::new(
-            stats
-                .log_messages
-                .iter()
-                .map(|msg| ListItem::new(msg.clone())),
-        )
-        .block(Block::default().title("Log Messages").borders(Borders::ALL));
-        f.render_widget(log_messages, chunks[3]);
-
         let bw_history = stats
             .bandwidth_history
             .iter()
@@ -403,12 +382,23 @@ fn draw_tui(
                 .borders(Borders::ALL),
         )
         .x_axis(Axis::default().title("Time").labels(vec!["0", "30", "60"]))
-        .y_axis(Axis::default().title("Bandwidth (bytes/s)").labels(vec![
-            convert_bytes(0.0),
-            convert_bytes(1024.0 * 1024.0),
-            convert_bytes(5.0 * 1024.0 * 1024.0),
-        ]));
-        f.render_widget(bandwidth_graph, chunks[4]);
+        .y_axis(Axis::default()
+                .title("Bandwidth (bytes/s)")
+                .labels(vec![
+                    convert_bytes(0.0),
+                    convert_bytes(stats.total_data_per_sec),
+                    convert_bytes(5.0 * 1024.0 * 1024.0),
+                ]));
+        f.render_widget(bandwidth_graph, chunks[2]);
+
+        let log_messages = List::new(
+            stats
+                .log_messages
+                .iter()
+                .map(|msg| ListItem::new(msg.clone())),
+        )
+        .block(Block::default().title("Log Messages").borders(Borders::ALL));
+        f.render_widget(log_messages, chunks[3]);
     })?;
     Ok(())
 }
