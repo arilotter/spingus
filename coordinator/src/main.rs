@@ -21,7 +21,9 @@ use log::{debug, info, warn};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph};
+use ratatui::widgets::{
+    Axis, Block, Borders, Chart, Dataset, GraphType, List, ListItem, Paragraph,
+};
 use ratatui::Terminal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::stdout;
@@ -34,6 +36,7 @@ const TICK_INTERVAL: Duration = Duration::from_secs(1);
 const PORT_QUIC: u16 = 9091;
 const LOCAL_KEY_PATH: &str = "./local_key";
 const ROLLING_AVERAGE_WINDOW: usize = 30;
+const BANDWIDTH_GRAPH_SIZE: usize = 60;
 
 #[derive(Debug, Parser)]
 #[clap(name = "relay node")]
@@ -97,6 +100,7 @@ async fn main() -> Result<()> {
     let connected_clients = Arc::new(Mutex::new(HashSet::new()));
     let log_messages = Arc::new(Mutex::new(VecDeque::new()));
     let mut data_received_per_tick: HashMap<PeerId, VecDeque<usize>> = Default::default();
+    let mut bandwidth_history = VecDeque::with_capacity(BANDWIDTH_GRAPH_SIZE);
     loop {
         match select(swarm.next(), &mut tick).await {
             Either::Left((event, _)) => match event.unwrap() {
@@ -222,11 +226,17 @@ async fn main() -> Result<()> {
                     total_data_per_sec += avg_data_per_second;
                 }
 
+                bandwidth_history.push_back(total_data_per_sec);
+                if bandwidth_history.len() > BANDWIDTH_GRAPH_SIZE {
+                    bandwidth_history.pop_front();
+                }
+
                 let stats = Stats {
                     connected_clients: connected_clients.lock().unwrap().iter().cloned().collect(),
                     data_per_sec_per_client,
                     total_data_per_sec,
                     log_messages: log_messages.lock().unwrap().iter().cloned().collect(),
+                    bandwidth_history: bandwidth_history.clone(),
                 };
 
                 tx.send(stats).await.expect("Failed to send stats");
@@ -302,6 +312,7 @@ struct Stats {
     data_per_sec_per_client: HashMap<PeerId, f64>,
     total_data_per_sec: f64,
     log_messages: Vec<String>,
+    bandwidth_history: VecDeque<f64>,
 }
 
 fn draw_tui(
@@ -321,10 +332,11 @@ fn draw_tui(
             .margin(1)
             .constraints(
                 [
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
                 ]
                 .as_ref(),
             )
@@ -374,6 +386,29 @@ fn draw_tui(
         )
         .block(Block::default().title("Log Messages").borders(Borders::ALL));
         f.render_widget(log_messages, chunks[3]);
+
+        let bw_history = stats
+            .bandwidth_history
+            .iter()
+            .enumerate()
+            .map(|(x, y)| (x as f64, *y))
+            .collect::<Vec<_>>();
+        let bandwidth_graph = Chart::new(vec![Dataset::default()
+            .name("Bandwidth")
+            .graph_type(GraphType::Line)
+            .data(&bw_history)])
+        .block(
+            Block::default()
+                .title("Bandwidth over Time")
+                .borders(Borders::ALL),
+        )
+        .x_axis(Axis::default().title("Time").labels(vec!["0", "30", "60"]))
+        .y_axis(Axis::default().title("Bandwidth (bytes/s)").labels(vec![
+            convert_bytes(0.0),
+            convert_bytes(1024.0 * 1024.0),
+            convert_bytes(5.0 * 1024.0 * 1024.0),
+        ]));
+        f.render_widget(bandwidth_graph, chunks[4]);
     })?;
     Ok(())
 }
