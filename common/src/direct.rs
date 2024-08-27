@@ -115,7 +115,6 @@ impl NetworkBehaviour for DirectMessage {
         }
 
         let peers: Vec<_> = self.pending_messages.keys().copied().collect();
-        info!("polling!!");
         for peer_id in peers {
             info!("peer id: {peer_id}");
             if let Some(connection_id) = self.connected_peers.get(&peer_id) {
