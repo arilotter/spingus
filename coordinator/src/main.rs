@@ -95,7 +95,12 @@ async fn main() -> Result<()> {
     let log_messages2 = log_messages.clone();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format(move |_, record| {
-            let output = format!("{}: {}", record.level(), record.args());
+            let output = format!(
+                "[{}] {}: {}",
+                record.module_path().unwrap_or("?"),
+                record.level(),
+                record.args()
+            );
             log_messages2.lock().unwrap().push_back(output);
             Ok(())
         })
@@ -224,7 +229,7 @@ async fn main() -> Result<()> {
                     bandwidth_history.pop_front();
                 }
                 let lm_len = log_messages.lock().unwrap().len();
-                let to_remove = lm_len.saturating_sub(15);
+                let to_remove = lm_len.saturating_sub(25);
                 if to_remove > 0 {
                     log_messages.lock().unwrap().drain(0..to_remove);
                 }
