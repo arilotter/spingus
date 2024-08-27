@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use common::{
     create_kademlia_behavior, read_or_create_identity, GOSSIPSUB_CHAT_FILE_TOPIC,
@@ -52,7 +52,6 @@ struct Opt {
 
 #[derive(NetworkBehaviour)]
 struct Behaviour {
-    gossipsub: gossipsub::Behaviour,
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
     relay: relay::Behaviour,
@@ -195,14 +194,6 @@ async fn main() -> Result<()> {
                             .push_back(format!("Received identify info from {:?}", peer_id));
                         swarm.add_external_address(info.observed_addr.clone());
                     }
-                    BehaviourEvent::Gossipsub(gossipsub::Event::Message { message, .. }) => {
-                        if let Some(peer_id) = message.source {
-                            data_received_per_tick
-                                .entry(peer_id)
-                                .or_default()
-                                .push_back(message.data.len());
-                        }
-                    }
                     _ => debug!("Other behaviour event: {:?}", event),
                 },
                 event => {
@@ -256,21 +247,6 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
     let local_peer_id = PeerId::from(local_key.public());
     debug!("Local peer id: {local_peer_id}");
 
-    let gossipsub_config = gossipsub::ConfigBuilder::default()
-        .validation_mode(gossipsub::ValidationMode::Permissive)
-        .max_transmit_size(20 * 1024 * 1024)
-        .build()
-        .expect("Valid config");
-
-    let mut gossipsub = gossipsub::Behaviour::new(
-        gossipsub::MessageAuthenticity::Signed(local_key.clone()),
-        gossipsub_config,
-    )
-    .expect("Correct configuration");
-
-    gossipsub.subscribe(&IdentTopic::new(GOSSIPSUB_CHAT_TOPIC))?;
-    gossipsub.subscribe(&IdentTopic::new(GOSSIPSUB_CHAT_FILE_TOPIC))?;
-
     let identify_config = identify::Behaviour::new(
         identify::Config::new(common::IDENTIFY_PROTO.into(), local_key.public())
             .with_interval(Duration::from_secs(60)),
@@ -279,7 +255,6 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
     let kademlia = create_kademlia_behavior(local_peer_id);
 
     let behaviour = Behaviour {
-        gossipsub,
         identify: identify_config,
         kademlia,
         relay: relay::Behaviour::new(

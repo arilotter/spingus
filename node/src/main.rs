@@ -58,7 +58,6 @@ struct Opt {
 
 #[derive(NetworkBehaviour)]
 struct Behaviour {
-    gossipsub: gossipsub::Behaviour,
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
     relay_client: relay::client::Behaviour,
@@ -94,9 +93,6 @@ async fn main() -> Result<()> {
     }?;
 
     info!("starting main loop");
-
-    let chat_topic_hash = gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_TOPIC).hash();
-    let file_topic_hash = gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_FILE_TOPIC).hash();
 
     let mut tick = futures_timer::Delay::new(TICK_INTERVAL);
 
@@ -165,56 +161,6 @@ async fn main() -> Result<()> {
                             }
                             info!("{:?}", e);
                         }
-                        BehaviourEvent::Gossipsub(gossip_event) => match gossip_event {
-                            gossipsub::Event::Message {
-                                message_id: _,
-                                propagation_source: _,
-                                message,
-                            } => {
-                                if message.topic == chat_topic_hash {
-                                    info!(
-                                        "Received message from {:?}: {}",
-                                        message.source,
-                                        String::from_utf8(message.data).unwrap()
-                                    );
-                                    if let Some(peer_id) = message.source {
-                                        debug!("Found new peer: {peer_id}. Dialing...");
-
-                                        if !swarm.is_connected(&peer_id) {
-                                            swarm
-                                                .behaviour_mut()
-                                                .kademlia
-                                                .get_record(common::get_peer_key(&peer_id));
-                                        }
-                                    }
-                                    continue;
-                                }
-
-                                if message.topic == file_topic_hash {
-                                    let file_id = String::from_utf8(message.data).unwrap();
-                                    info!("Received file {} from {:?}", file_id, message.source);
-
-                                    let request_id =
-                                        swarm.behaviour_mut().request_response.send_request(
-                                            &message.source.unwrap(),
-                                            FileRequest {
-                                                file_id: file_id.clone(),
-                                            },
-                                        );
-                                    info!(
-                                        "Requested file {} to {:?}: req_id:{:?}",
-                                        file_id, message.source, request_id
-                                    );
-                                    continue;
-                                }
-
-                                error!("Unexpected gossipsub topic hash: {:?}", message.topic);
-                            }
-                            gossipsub::Event::Subscribed { peer_id, topic } => {
-                                debug!("{peer_id} subscribed to {topic}");
-                            }
-                            _ => debug!("Other gossipsub event: {:?}", gossip_event),
-                        },
                         BehaviourEvent::Identify(e) => {
                             match e {
                                 identify::Event::Received { peer_id, info } => {
@@ -330,14 +276,16 @@ async fn main() -> Result<()> {
                     let mut data = vec![0u8; DATA_SIZE_MB * 1024 * 1024];
                     rand::thread_rng().fill(&mut data[..]);
 
-                    let res = swarm.behaviour_mut().gossipsub.publish(
-                        chat_topic_hash.clone(),
-                        data, // Send the random data instead of the "hello" message
-                    );
-                    if res.is_err() {
-                        error!("failed to publish message {:?}", res);
-                    } else {
-                        info!("published message :)");
+                    // Send the random data directly to each connected peer
+                    for peer in swarm.connected_peers() {
+                        let request_id = swarm.behaviour_mut().request_response.send_request(
+                            &peer,
+                            FileRequest {
+                                file_id: format!("{}-{}", my_peer_id, now),
+                                file_body: data.clone(),
+                            },
+                        );
+                        info!("Sent data to {:?}: req_id:{:?}", peer, request_id);
                     }
                 }
             }
@@ -386,8 +334,6 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
 
     let kademlia = create_kademlia_behavior(local_peer_id);
 
-    let gossipsub_behaviour = make_gossipsub_behavior(local_key.clone())?;
-
     let swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
         .with_tokio()
         .with_quic()
@@ -395,7 +341,6 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
         .with_relay_client(noise::Config::new, yamux::Config::default)?
         .with_behaviour(|keypair, relay_behaviour| Behaviour {
             relay_client: relay_behaviour,
-            gossipsub: gossipsub_behaviour,
             kademlia,
             ping: ping::Behaviour::new(ping::Config::new()),
             dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
