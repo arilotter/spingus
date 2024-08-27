@@ -244,13 +244,6 @@ async fn main() -> Result<()> {
                 }
 
                 if swarm.connected_peers().next().is_some() {
-                    let my_peer_id = *swarm.local_peer_id();
-                    let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs();
-
-                    // Generate random data of size DATA_SIZE_MB
                     let mut data = vec![0u8; DATA_SIZE_MB * 1024 * 1024];
                     rand::thread_rng().fill(&mut data[..]);
 

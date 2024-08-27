@@ -7,6 +7,7 @@ use libp2p::swarm::{
     NetworkBehaviour, NotifyHandler, PollParameters, SubstreamProtocol, THandlerInEvent, ToSwarm,
 };
 use libp2p::{InboundUpgrade, OutboundUpgrade, PeerId};
+use log::{error, info, warn};
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::task::{Context, Poll};
@@ -112,19 +113,27 @@ impl NetworkBehaviour for DirectMessage {
             return Poll::Ready(event);
         }
 
-        for (peer, messages) in self.pending_messages.iter_mut() {
-            if let Some(connection_id) = self.connected_peers.get(peer) {
-                if let Some(message) = messages.pop_front() {
-                    let event = ToSwarm::NotifyHandler {
-                        peer_id: *peer,
-                        handler: NotifyHandler::One(*connection_id),
-                        event: DirectMessageHandlerIn::SendMessage(message),
-                    };
-                    self.events.push_back(ToSwarm::GenerateEvent(
-                        DirectMessageEvent::MessageSent { to: *peer },
-                    ));
-                    return Poll::Ready(event);
+        let peers: Vec<_> = self.pending_messages.keys().copied().collect();
+
+        for peer_id in peers {
+            if let Some(connection_id) = self.connected_peers.get(&peer_id) {
+                let messages = self.pending_messages.get_mut(&peer_id);
+                if let Some(messages) = messages {
+                    if let Some(message) = messages.pop_front() {
+                        let event = ToSwarm::NotifyHandler {
+                            peer_id,
+                            handler: NotifyHandler::One(*connection_id),
+                            event: DirectMessageHandlerIn::SendMessage(message),
+                        };
+                        self.events.push_back(ToSwarm::GenerateEvent(
+                            DirectMessageEvent::MessageSent { to: peer_id },
+                        ));
+                        return Poll::Ready(event);
+                    }
                 }
+            } else {
+                warn!("peer {peer_id} is not connected, dropping all messages");
+                self.pending_messages.remove(&peer_id);
             }
         }
 
