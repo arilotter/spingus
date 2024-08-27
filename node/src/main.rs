@@ -1,5 +1,3 @@
-mod protocol;
-
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use common::{
@@ -21,7 +19,6 @@ use libp2p::{
 };
 use libp2p::{noise, ping, swarm, yamux};
 use log::{debug, error, info, warn};
-use protocol::FileExchangeCodec;
 use rand::Rng; // Add this line
 use std::iter;
 use std::net::IpAddr;
@@ -33,10 +30,7 @@ use std::{
     time::Duration,
 };
 
-use crate::protocol::FileRequest;
-
 const TICK_INTERVAL: Duration = Duration::from_secs(5);
-const FILE_EXCHANGE_PROTOCOL: StreamProtocol = StreamProtocol::new("/test-app-file/1");
 const PORT_QUIC: u16 = 9091;
 const LOCAL_KEY_PATH: &str = "./local_key";
 const DATA_SIZE_MB: usize = 1; // Add this line to configure the size of random data to send
@@ -61,11 +55,10 @@ struct Behaviour {
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
     relay_client: relay::client::Behaviour,
-    request_response: request_response::Behaviour<FileExchangeCodec>,
     connection_limits: memory_connection_limits::Behaviour,
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
-    direct_message: common::DirectMessage, // Add the new DirectMessage behaviour
+    direct_message: common::direct::DirectMessage,
 }
 
 #[tokio::main]
@@ -116,21 +109,6 @@ async fn main() -> Result<()> {
                 } => {
                     let addr = endpoint.get_remote_address();
                     info!("Connected to {peer_id} at {addr}");
-
-                    // Send pending direct messages when a connection is established
-                    if let Some(messages) = swarm
-                        .behaviour_mut()
-                        .direct_message
-                        .pending_messages
-                        .remove(&peer_id)
-                    {
-                        for message in messages {
-                            swarm
-                                .behaviour_mut()
-                                .direct_message
-                                .send_message(peer_id, message);
-                        }
-                    }
                 }
                 SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                     warn!("Failed to dial {peer_id:?}: {error}");
@@ -232,38 +210,14 @@ async fn main() -> Result<()> {
                                 }
                             }
                         }
-                        BehaviourEvent::RequestResponse(r_r) => match r_r {
-                            request_response::Event::Message { message, .. } => match message {
-                                request_response::Message::Request { request, .. } => {
-                                    //TODO: support ProtocolSupport::Full
-                                    debug!(
-                                        "umimplemented: request_response::Message::Request: {:?}",
-                                        request
-                                    );
-                                }
-                                request_response::Message::Response { response, .. } => {
-                                    info!(
-                                        "request_response::Message::Response: size:{}",
-                                        response.file_body.len()
-                                    );
-                                    // TODO: store this file (in memory or disk) and provider it via Kademlia
-                                }
-                            },
-                            request_response::Event::OutboundFailure {
-                                request_id, error, ..
-                            } => {
-                                error!(
-                                "request_response::Event::OutboundFailure for request {:?}: {:?}",
-                                request_id, error
-                            );
-                            }
-                            _ => debug!("Unhandled request_response event: {:?}", r_r),
-                        },
                         BehaviourEvent::DirectMessage(e) => match e {
-                            common::DirectMessageEvent::MessageReceived { from, message } => {
+                            common::direct::DirectMessageEvent::MessageReceived {
+                                from,
+                                message,
+                            } => {
                                 info!("Received direct message from {}: {:?}", from, message);
                             }
-                            common::DirectMessageEvent::MessageSent { to } => {
+                            common::direct::DirectMessageEvent::MessageSent { to } => {
                                 info!("Sent direct message to {}", to);
                             }
                         },
@@ -301,15 +255,13 @@ async fn main() -> Result<()> {
                     rand::thread_rng().fill(&mut data[..]);
 
                     // Send the random data directly to each connected peer
-                    for peer in swarm.connected_peers() {
-                        let request_id = swarm.behaviour_mut().request_response.send_request(
-                            &peer,
-                            FileRequest {
-                                file_id: format!("{}-{}", my_peer_id, now),
-                                file_body: data.clone(),
-                            },
-                        );
-                        info!("Sent data to {:?}: req_id:{:?}", peer, request_id);
+                    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
+                    for peer in connected_peers {
+                        swarm
+                            .behaviour_mut()
+                            .direct_message
+                            .send_message(peer, data.clone());
+                        info!("Sent data to {:?}", peer);
                     }
                 }
             }
@@ -369,11 +321,6 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
             ping: ping::Behaviour::new(ping::Config::new()),
             dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
             identify: identify_config,
-            request_response: request_response::Behaviour::new(
-                // TODO: support ProtocolSupport::Full
-                iter::once((FILE_EXCHANGE_PROTOCOL, ProtocolSupport::Outbound)),
-                Default::default(),
-            ),
             connection_limits: memory_connection_limits::Behaviour::with_max_percentage(0.9),
             direct_message: common::direct::DirectMessage::new(), // Initialize the new DirectMessage behaviour
         })?

@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use clap::Parser;
 use common::{create_kademlia_behavior, read_or_create_identity};
 use futures::future::{select, Either};
@@ -6,7 +6,6 @@ use futures::StreamExt;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::Record;
 use libp2p::{
-    gossipsub::{self, IdentTopic},
     identify, identity,
     kad::{self, record::store::MemoryStore},
     multiaddr::{Multiaddr, Protocol},
@@ -17,7 +16,6 @@ use libp2p::{
 use log::{debug, info, warn};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::style::{Color, Style};
 use ratatui::widgets::{
     Axis, Block, Borders, Chart, Dataset, GraphType, List, ListItem, Paragraph,
 };
@@ -52,6 +50,7 @@ struct Behaviour {
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
     relay: relay::Behaviour,
+    direct_message: common::direct::DirectMessage,
 }
 
 #[tokio::main]
@@ -191,6 +190,25 @@ async fn main() -> Result<()> {
                             .push_back(format!("Received identify info from {:?}", peer_id));
                         swarm.add_external_address(info.observed_addr.clone());
                     }
+                    BehaviourEvent::DirectMessage(e) => {
+                        match e {
+                            common::direct::DirectMessageEvent::MessageReceived {
+                                from,
+                                message,
+                            } => {
+                                let message_size = message.len(); // Get the size of the received message
+                                if let Some(data_received) = data_received_per_tick.get_mut(&from) {
+                                    data_received.push_back(message_size); // Update the data_received_per_tick with the message size
+                                }
+                            }
+                            common::direct::DirectMessageEvent::MessageSent { to } => {
+                                log_messages
+                                    .lock()
+                                    .unwrap()
+                                    .push_back(format!("Sent message to {}", to));
+                            }
+                        }
+                    }
                     _ => debug!("Other behaviour event: {:?}", event),
                 },
                 event => {
@@ -266,6 +284,7 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
                 ..Default::default()
             },
         ),
+        direct_message: common::direct::DirectMessage::new(),
     };
 
     let swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)
@@ -304,10 +323,11 @@ fn draw_tui(
             .margin(1)
             .constraints(
                 [
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(25),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(20),
                 ]
                 .as_ref(),
             )
