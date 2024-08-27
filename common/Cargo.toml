@@ -9,3 +9,5 @@ anyhow = { workspace = true }
 log = { workspace = true }
 tokio = { workspace = true }
 bincode = { workspace = true }
+futures = { workspace = true }
+asynchronous-codec = "0.7.0"

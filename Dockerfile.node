@@ -7,4 +7,4 @@ FROM debian:bookworm-slim
 COPY --from=builder /usr/src/node/target/release/node /usr/local/bin/node
 RUN apt-get update && apt-get install -y libssl-dev && rm -rf /var/lib/apt/lists/*
 
-CMD ["node"]
+CMD ["node", "--coordinator-address=/ip4/138.197.155.76/udp/9091/quic-v1/p2p/12D3KooWA13s4ocWGRz6o2D1au9xzHzArYJx76eYqAcDdUqCRdDf"]

@@ -7,10 +7,10 @@ use libp2p::{
 use log::info;
 use std::path::Path;
 use tokio::fs;
-
+pub mod direct;
 pub const GOSSIPSUB_CHAT_TOPIC: &str = "test-app";
 pub const GOSSIPSUB_CHAT_FILE_TOPIC: &str = "test-app-file";
-pub const IDENTIFY_PROTO: &str = &"/test-app/0.1.0";
+pub const IDENTIFY_PROTO: &str = "/test-app/0.1.0";
 
 pub async fn read_or_create_identity(path: &Path) -> Result<identity::Keypair> {
     if path.exists() {
@@ -38,15 +38,15 @@ pub fn create_kademlia_behavior(local_peer_id: PeerId) -> kad::Behaviour<MemoryS
     cfg.set_caching(kad::Caching::Enabled { max_peers: 100 });
 
     let store = MemoryStore::new(local_peer_id);
-    let kademlia = kad::Behaviour::with_config(local_peer_id, store, cfg);
-    kademlia
+
+    kad::Behaviour::with_config(local_peer_id, store, cfg)
 }
 
 const PEER_ADDR_KEY_PREFIX: &[u8] = b"p_addrs";
 
 pub fn get_peer_key(peer_id: &PeerId) -> kad::record::Key {
     let bytes: Vec<u8> = PEER_ADDR_KEY_PREFIX
-        .into_iter()
+        .iter()
         .copied()
         .chain(peer_id.to_bytes())
         .collect();

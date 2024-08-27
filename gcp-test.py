@@ -4,6 +4,7 @@ import signal
 import sys
 import argparse
 from tqdm import tqdm
+import uuid
 
 # List to store container IDs
 containers = []
@@ -22,6 +23,8 @@ def cleanup():
                 "--project",
                 args.project_id,
                 "--quiet",
+                "--zone",
+                "us-central1-a",
             ]
         )
     print("All containers terminated.")
@@ -47,13 +50,15 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+run_id = str(uuid.uuid4())[:8]
 try:
     # Spin up N containers
+    start_threads = []
     for i in range(args.num_containers):
-        container_name = f"container-{i}"
+        container_name = f"{run_id}-container-{i}"
         print(f"Starting container {container_name}...")
-
-        result = subprocess.run(
+        containers.append(container_name)
+        p = subprocess.Popen(
             [
                 "gcloud",
                 "compute",
@@ -64,15 +69,20 @@ try:
                 args.project_id,
                 "--container-image",
                 args.container_image,
+                "--machine-type",
+                "n1-standard-1",
+                "--zone",
+                "us-central1-a",
             ],
-            capture_output=True,
-            text=True,
         )
+        start_threads.append(p)
 
+    for thread in start_threads:
+        result = thread.wait()
         if result.returncode == 0:
-            containers.append(container_name)
             print(f"Container {container_name} started successfully.")
         else:
+            containers.remove(container_name)
             print(f"Failed to start container {container_name}. Error: {result.stderr}")
 
     # Wait for specified time with progress bar

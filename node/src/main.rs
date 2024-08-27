@@ -65,6 +65,7 @@ struct Behaviour {
     connection_limits: memory_connection_limits::Behaviour,
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
+    direct_message: common::DirectMessage, // Add the new DirectMessage behaviour
 }
 
 #[tokio::main]
@@ -115,6 +116,21 @@ async fn main() -> Result<()> {
                 } => {
                     let addr = endpoint.get_remote_address();
                     info!("Connected to {peer_id} at {addr}");
+
+                    // Send pending direct messages when a connection is established
+                    if let Some(messages) = swarm
+                        .behaviour_mut()
+                        .direct_message
+                        .pending_messages
+                        .remove(&peer_id)
+                    {
+                        for message in messages {
+                            swarm
+                                .behaviour_mut()
+                                .direct_message
+                                .send_message(peer_id, message);
+                        }
+                    }
                 }
                 SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                     warn!("Failed to dial {peer_id:?}: {error}");
@@ -243,6 +259,14 @@ async fn main() -> Result<()> {
                             }
                             _ => debug!("Unhandled request_response event: {:?}", r_r),
                         },
+                        BehaviourEvent::DirectMessage(e) => match e {
+                            common::DirectMessageEvent::MessageReceived { from, message } => {
+                                info!("Received direct message from {}: {:?}", from, message);
+                            }
+                            common::DirectMessageEvent::MessageSent { to } => {
+                                info!("Sent direct message to {}", to);
+                            }
+                        },
                     }
                 }
                 event => {
@@ -351,6 +375,7 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
                 Default::default(),
             ),
             connection_limits: memory_connection_limits::Behaviour::with_max_percentage(0.9),
+            direct_message: common::direct::DirectMessage::new(), // Initialize the new DirectMessage behaviour
         })?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();

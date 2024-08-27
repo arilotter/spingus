@@ -1,9 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
-use common::{
-    create_kademlia_behavior, read_or_create_identity, GOSSIPSUB_CHAT_FILE_TOPIC,
-    GOSSIPSUB_CHAT_TOPIC,
-};
+use common::{create_kademlia_behavior, read_or_create_identity};
 use futures::future::{select, Either};
 use futures::StreamExt;
 use libp2p::kad::store::RecordStore;
