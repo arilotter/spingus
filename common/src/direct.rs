@@ -128,7 +128,7 @@ impl NetworkBehaviour for DirectMessage {
                             handler: NotifyHandler::One(*connection_id),
                             event: DirectMessageHandlerIn::SendMessage(message),
                         };
-                        info!("pushed message!!!");
+                        info!("pushed message to {peer_id} {connection_id}");
                         self.events.push_back(ToSwarm::GenerateEvent(
                             DirectMessageEvent::MessageSent { to: peer_id },
                         ));

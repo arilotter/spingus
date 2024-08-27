@@ -7,7 +7,6 @@ use common::{
 use futures::future::{select, Either};
 use futures::StreamExt;
 use libp2p::kad::{GetRecordOk, PeerRecord, Record};
-use libp2p::request_response::{self, ProtocolSupport};
 use libp2p::{
     dcutr, gossipsub, identify, identity, kad,
     kad::record::store::MemoryStore,
@@ -15,15 +14,13 @@ use libp2p::{
     multiaddr::{Multiaddr, Protocol},
     relay,
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
-    PeerId, StreamProtocol,
+    PeerId,
 };
 use libp2p::{noise, ping, swarm, yamux};
 use log::{debug, error, info, warn};
 use rand::Rng; // Add this line
-use std::iter;
 use std::net::IpAddr;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{
     collections::hash_map::DefaultHasher,
     hash::{Hash, Hasher},

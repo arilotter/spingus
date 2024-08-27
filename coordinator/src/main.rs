@@ -13,12 +13,10 @@ use libp2p::{
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     PeerId,
 };
-use log::{debug, info, warn};
+use log::{debug, info};
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::widgets::{
-    Axis, Block, Borders, Chart, Dataset, GraphType, List, ListItem, Paragraph,
-};
+use ratatui::widgets::{Axis, Block, Borders, Chart, Dataset, GraphType, List, ListItem};
 use ratatui::Terminal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::stdout;
@@ -55,8 +53,6 @@ struct Behaviour {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-
     let opt = Opt::parse();
     let local_key = read_or_create_identity(Path::new(LOCAL_KEY_PATH))
         .await
@@ -96,6 +92,14 @@ async fn main() -> Result<()> {
     let log_messages = Arc::new(Mutex::new(VecDeque::new()));
     let mut data_received_per_tick: HashMap<PeerId, VecDeque<usize>> = Default::default();
     let mut bandwidth_history = VecDeque::with_capacity(BANDWIDTH_GRAPH_SIZE);
+    let log_messages2 = log_messages.clone();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format(move |_, record| {
+            let output = format!("{}: {}", record.level(), record.args());
+            log_messages2.lock().unwrap().push_back(output);
+            Ok(())
+        })
+        .init();
     loop {
         match select(swarm.next(), &mut tick).await {
             Either::Left((event, _)) => match event.unwrap() {
