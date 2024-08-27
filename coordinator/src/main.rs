@@ -197,13 +197,13 @@ async fn main() -> Result<()> {
                                 message,
                             } => {
                                 let message_size = message.len(); // Get the size of the received message
+                                log_messages.lock().unwrap().push_back(format!(
+                                    "got message from {}, {}",
+                                    from,
+                                    convert_bytes(message_size as f64)
+                                ));
                                 if let Some(data_received) = data_received_per_tick.get_mut(&from) {
                                     data_received.push_back(message_size); // Update the data_received_per_tick with the message size
-                                    log_messages.lock().unwrap().push_back(format!(
-                                        "got message from {}, {}",
-                                        from,
-                                        convert_bytes(message_size as f64)
-                                    ));
                                 }
                             }
                             common::direct::DirectMessageEvent::MessageSent { to } => {

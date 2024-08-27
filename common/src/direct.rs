@@ -51,6 +51,7 @@ impl DirectMessage {
             .entry(to)
             .or_default()
             .push_back(message);
+        info!("pushing pending message to {to}");
     }
 }
 
@@ -114,9 +115,11 @@ impl NetworkBehaviour for DirectMessage {
         }
 
         let peers: Vec<_> = self.pending_messages.keys().copied().collect();
-
+        info!("polling!!");
         for peer_id in peers {
+            info!("peer id: {peer_id}");
             if let Some(connection_id) = self.connected_peers.get(&peer_id) {
+                info!("peer IS connected");
                 let messages = self.pending_messages.get_mut(&peer_id);
                 if let Some(messages) = messages {
                     if let Some(message) = messages.pop_front() {
@@ -125,6 +128,7 @@ impl NetworkBehaviour for DirectMessage {
                             handler: NotifyHandler::One(*connection_id),
                             event: DirectMessageHandlerIn::SendMessage(message),
                         };
+                        info!("pushed message!!!");
                         self.events.push_back(ToSwarm::GenerateEvent(
                             DirectMessageEvent::MessageSent { to: peer_id },
                         ));
@@ -253,6 +257,7 @@ impl ConnectionHandler for DirectMessageHandler {
         if let Some(stream) = self.inbound_stream.as_mut() {
             match stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(message))) => {
+                    info!("GOT MESSAGE WOOOOOOOO");
                     return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(
                         DirectMessageHandlerOut::MessageReceived(message.to_vec()),
                     ));
