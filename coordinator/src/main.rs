@@ -113,19 +113,13 @@ async fn main() -> Result<()> {
                     }
 
                     let p2p_address = address.with(Protocol::P2p(*swarm.local_peer_id()));
-                    log_messages
-                        .lock()
-                        .unwrap()
-                        .push_back(format!("Listening on {p2p_address}"));
+                    info!("Listening on {p2p_address}");
                 }
                 SwarmEvent::ConnectionEstablished {
                     peer_id, endpoint, ..
                 } => {
                     let addr = endpoint.get_remote_address();
-                    log_messages
-                        .lock()
-                        .unwrap()
-                        .push_back(format!("Connected to {peer_id} thru endpoint {addr}"));
+                    info!("Connected to {peer_id} thru endpoint {addr}");
                     connected_clients.lock().unwrap().insert(peer_id);
                     data_received_per_tick.entry(peer_id).or_default();
                 }
@@ -136,23 +130,16 @@ async fn main() -> Result<()> {
                     ..
                 } => {
                     let addr = endpoint.get_remote_address();
-                    log_messages.lock().unwrap().push_back(format!(
-                        "Connection to {peer_id} closed: {cause:?} thru endpoint {addr}"
-                    ));
+                    info!("Connection to {peer_id} closed: {cause:?} thru endpoint {addr}");
                     swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
                     connected_clients.lock().unwrap().remove(&peer_id);
                     data_received_per_tick.remove(&peer_id);
-                    log_messages.lock().unwrap().push_back(format!(
-                        "Removed {peer_id} from the routing table and peers list."
-                    ));
+                    info!("Removed {peer_id} from the routing table and peers list.");
                 }
                 SwarmEvent::Behaviour(event) => match event {
                     BehaviourEvent::Relay(e) => {
                         if let relay::Event::ReservationReqAccepted { src_peer_id, .. } = e {
-                            log_messages.lock().unwrap().push_back(format!(
-                                "Relay reservation accepted from {:?}",
-                                src_peer_id
-                            ));
+                            info!("Relay reservation accepted from {:?}", src_peer_id);
                             let local_peer_id = *swarm.local_peer_id();
                             let peer_dialable_addrs: Vec<Multiaddr> = swarm
                                 .external_addresses()
@@ -178,20 +165,14 @@ async fn main() -> Result<()> {
                                 ))
                                 .unwrap();
                         } else if let relay::Event::ReservationTimedOut { src_peer_id, .. } = e {
-                            log_messages.lock().unwrap().push_back(format!(
-                                "Relay reservation timed out from {:?}",
-                                src_peer_id
-                            ));
+                            info!("Relay reservation timed out from {:?}", src_peer_id);
                             let key = kad::record::Key::from(Vec::<u8>::from(src_peer_id));
                             swarm.behaviour_mut().kademlia.store_mut().remove(&key);
                         }
                         debug!("Relay event: {:?}", e);
                     }
                     BehaviourEvent::Identify(identify::Event::Received { peer_id, info }) => {
-                        log_messages
-                            .lock()
-                            .unwrap()
-                            .push_back(format!("Received identify info from {:?}", peer_id));
+                        info!("Received identify info from {:?}", peer_id);
                         swarm.add_external_address(info.observed_addr.clone());
                     }
                     BehaviourEvent::DirectMessage(e) => {
@@ -201,20 +182,17 @@ async fn main() -> Result<()> {
                                 message,
                             } => {
                                 let message_size = message.len(); // Get the size of the received message
-                                log_messages.lock().unwrap().push_back(format!(
+                                info!(
                                     "got message from {}, {}",
                                     from,
                                     convert_bytes(message_size as f64)
-                                ));
+                                );
                                 if let Some(data_received) = data_received_per_tick.get_mut(&from) {
                                     data_received.push_back(message_size); // Update the data_received_per_tick with the message size
                                 }
                             }
                             common::direct::DirectMessageEvent::MessageSent { to } => {
-                                log_messages
-                                    .lock()
-                                    .unwrap()
-                                    .push_back(format!("Sent message to {}", to));
+                                info!("Sent message to {}", to);
                             }
                         }
                     }
@@ -244,6 +222,11 @@ async fn main() -> Result<()> {
                 bandwidth_history.push_back(total_data_per_sec);
                 if bandwidth_history.len() > BANDWIDTH_GRAPH_SIZE {
                     bandwidth_history.pop_front();
+                }
+                let lm_len = log_messages.lock().unwrap().len();
+                let to_remove = lm_len.saturating_sub(15);
+                if to_remove > 0 {
+                    log_messages.lock().unwrap().drain(0..to_remove);
                 }
 
                 let stats = Stats {
