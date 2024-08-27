@@ -66,6 +66,7 @@ impl NetworkBehaviour for DirectMessage {
         _local_addr: &Multiaddr,
         _remote_addr: &Multiaddr,
     ) -> Result<Self::ConnectionHandler, libp2p::swarm::ConnectionDenied> {
+        warn!("stablished INBOUND with {peer}");
         self.connected_peers.insert(peer, connection_id);
         Ok(DirectMessageHandler::new())
     }
@@ -77,6 +78,7 @@ impl NetworkBehaviour for DirectMessage {
         _addr: &Multiaddr,
         _role_override: libp2p::core::Endpoint,
     ) -> Result<Self::ConnectionHandler, libp2p::swarm::ConnectionDenied> {
+        warn!("stablished outbound with {peer}");
         self.connected_peers.insert(peer, connection_id);
         Ok(DirectMessageHandler::new())
     }
