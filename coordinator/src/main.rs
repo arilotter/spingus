@@ -241,10 +241,6 @@ async fn main() -> Result<()> {
 
                 last_tick = Instant::now();
                 tick = futures_timer::Delay::new(TICK_INTERVAL);
-                debug!(
-                    "external addrs: {:?}",
-                    swarm.external_addresses().collect::<Vec<&Multiaddr>>()
-                );
             }
         }
     }

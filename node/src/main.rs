@@ -227,11 +227,6 @@ async fn main() -> Result<()> {
             Either::Right(_) => {
                 tick = futures_timer::Delay::new(TICK_INTERVAL);
 
-                debug!(
-                    "external addrs: {:?}",
-                    swarm.external_addresses().collect::<Vec<&Multiaddr>>()
-                );
-
                 if !swarm.is_connected(&coordinator_peer_id) {
                     info!("not connected to the coordinator, connecting...");
                     let p2p_circuit_listen_addr =
