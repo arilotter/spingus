@@ -49,7 +49,7 @@ struct Opt {
 struct Behaviour {
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
-    relay: relay::Behaviour,
+    // relay: relay::Behaviour,
     direct_message: common::DisTrOBehavior,
 }
 
@@ -144,40 +144,40 @@ async fn main() -> Result<()> {
                     info!("Removed {peer_id} from the routing table and peers list.");
                 }
                 SwarmEvent::Behaviour(event) => match event {
-                    BehaviourEvent::Relay(e) => {
-                        if let relay::Event::ReservationReqAccepted { src_peer_id, .. } = e {
-                            info!("Relay reservation accepted from {:?}", src_peer_id);
-                            let local_peer_id = *swarm.local_peer_id();
-                            let peer_dialable_addrs: Vec<Multiaddr> = swarm
-                                .external_addresses()
-                                .map(|a| {
-                                    let cloned = a.clone();
-                                    (match a.iter().last().unwrap() {
-                                        Protocol::P2p(p_id) if p_id == local_peer_id => cloned,
-                                        _ => cloned.with(Protocol::P2p(local_peer_id)),
-                                    })
-                                    .with(Protocol::P2pCircuit)
-                                    .with(Protocol::P2p(src_peer_id))
-                                })
-                                .collect();
-                            let peer_dialable_addrs_bytes =
-                                common::encode_multiaddrs(&peer_dialable_addrs);
-                            swarm
-                                .behaviour_mut()
-                                .kademlia
-                                .store_mut()
-                                .put(Record::new(
-                                    common::get_peer_key(&src_peer_id),
-                                    peer_dialable_addrs_bytes,
-                                ))
-                                .unwrap();
-                        } else if let relay::Event::ReservationTimedOut { src_peer_id, .. } = e {
-                            info!("Relay reservation timed out from {:?}", src_peer_id);
-                            let key = kad::record::Key::from(Vec::<u8>::from(src_peer_id));
-                            swarm.behaviour_mut().kademlia.store_mut().remove(&key);
-                        }
-                        debug!("Relay event: {:?}", e);
-                    }
+                    // BehaviourEvent::Relay(e) => {
+                    //     if let relay::Event::ReservationReqAccepted { src_peer_id, .. } = e {
+                    //         info!("Relay reservation accepted from {:?}", src_peer_id);
+                    //         let local_peer_id = *swarm.local_peer_id();
+                    //         let peer_dialable_addrs: Vec<Multiaddr> = swarm
+                    //             .external_addresses()
+                    //             .map(|a| {
+                    //                 let cloned = a.clone();
+                    //                 (match a.iter().last().unwrap() {
+                    //                     Protocol::P2p(p_id) if p_id == local_peer_id => cloned,
+                    //                     _ => cloned.with(Protocol::P2p(local_peer_id)),
+                    //                 })
+                    //                 .with(Protocol::P2pCircuit)
+                    //                 .with(Protocol::P2p(src_peer_id))
+                    //             })
+                    //             .collect();
+                    //         let peer_dialable_addrs_bytes =
+                    //             common::encode_multiaddrs(&peer_dialable_addrs);
+                    //         swarm
+                    //             .behaviour_mut()
+                    //             .kademlia
+                    //             .store_mut()
+                    //             .put(Record::new(
+                    //                 common::get_peer_key(&src_peer_id),
+                    //                 peer_dialable_addrs_bytes,
+                    //             ))
+                    //             .unwrap();
+                    //     } else if let relay::Event::ReservationTimedOut { src_peer_id, .. } = e {
+                    //         info!("Relay reservation timed out from {:?}", src_peer_id);
+                    //         let key = kad::record::Key::from(Vec::<u8>::from(src_peer_id));
+                    //         swarm.behaviour_mut().kademlia.store_mut().remove(&key);
+                    //     }
+                    //     debug!("Relay event: {:?}", e);
+                    // }
                     BehaviourEvent::Identify(identify::Event::Received { peer_id, info }) => {
                         info!("Received identify info from {:?}", peer_id);
                         swarm.add_external_address(info.observed_addr.clone());
@@ -272,18 +272,18 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
     let behaviour = Behaviour {
         identify: identify_config,
         kademlia,
-        relay: relay::Behaviour::new(
-            local_peer_id,
-            relay::Config {
-                max_reservations: usize::MAX,
-                max_reservations_per_peer: 100,
-                reservation_rate_limiters: Vec::default(),
-                circuit_src_rate_limiters: Vec::default(),
-                max_circuits: usize::MAX,
-                max_circuits_per_peer: 100,
-                ..Default::default()
-            },
-        ),
+        // relay: relay::Behaviour::new(
+        //     local_peer_id,
+        //     relay::Config {
+        //         max_reservations: usize::MAX,
+        //         max_reservations_per_peer: 100,
+        //         reservation_rate_limiters: Vec::default(),
+        //         circuit_src_rate_limiters: Vec::default(),
+        //         max_circuits: usize::MAX,
+        //         max_circuits_per_peer: 100,
+        //         ..Default::default()
+        //     },
+        // ),
         direct_message: common::DisTrOBehavior::new(
             [(
                 StreamProtocol::new(common::REQ_RES_PROTOCOL),

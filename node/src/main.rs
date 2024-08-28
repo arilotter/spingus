@@ -52,7 +52,7 @@ struct Opt {
 struct Behaviour {
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
-    relay_client: relay::client::Behaviour,
+    // relay_client: relay::client::Behaviour,
     connection_limits: memory_connection_limits::Behaviour,
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
@@ -149,19 +149,19 @@ async fn main() -> Result<()> {
                                 info!("ack from {peer}");
                             }
                         }
-                        BehaviourEvent::RelayClient(e) => {
-                            match e {
-                                relay::client::Event::ReservationReqAccepted {
-                                    relay_peer_id,
-                                    renewal,
-                                    limit,
-                                } => {
-                                    info!("Relay reservation accepted from {:?}, renewal: {:?}, limit: {:?}", relay_peer_id, renewal, limit);
-                                }
-                                _ => {}
-                            }
-                            info!("{:?}", e);
-                        }
+                        // BehaviourEvent::RelayClient(e) => {
+                        //     match e {
+                        //         relay::client::Event::ReservationReqAccepted {
+                        //             relay_peer_id,
+                        //             renewal,
+                        //             limit,
+                        //         } => {
+                        //             info!("Relay reservation accepted from {:?}, renewal: {:?}, limit: {:?}", relay_peer_id, renewal, limit);
+                        //         }
+                        //         _ => {}
+                        //     }
+                        //     info!("{:?}", e);
+                        // }
                         BehaviourEvent::Identify(e) => {
                             match e {
                                 identify::Event::Received { peer_id, info } => {
@@ -297,9 +297,9 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
         .with_tokio()
         .with_quic()
         .with_dns()?
-        .with_relay_client(noise::Config::new, yamux::Config::default)?
-        .with_behaviour(|keypair, relay_behaviour| Behaviour {
-            relay_client: relay_behaviour,
+        // .with_relay_client(noise::Config::new, yamux::Config::default)?
+        .with_behaviour(|keypair /*, relay_behaviour*/| Behaviour {
+            // relay_client: relay_behaviour,
             kademlia,
             ping: ping::Behaviour::new(ping::Config::new()),
             dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
