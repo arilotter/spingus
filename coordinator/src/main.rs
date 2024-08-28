@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use common::{create_kademlia_behavior, read_or_create_identity};
+use common::{create_kademlia_behavior, read_or_create_identity, DisTrOAck, DisTrOData};
 use futures::future::{select, Either};
 use futures::StreamExt;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::Record;
+use libp2p::request_response::ProtocolSupport;
+use libp2p::StreamProtocol;
 use libp2p::{
     identify, identity,
     kad::{self, record::store::MemoryStore},
@@ -48,7 +50,7 @@ struct Behaviour {
     identify: identify::Behaviour,
     kademlia: kad::Behaviour<MemoryStore>,
     relay: relay::Behaviour,
-    direct_message: common::direct::DirectMessage,
+    direct_message: common::DisTrOBehavior,
 }
 
 #[tokio::main]
@@ -180,25 +182,26 @@ async fn main() -> Result<()> {
                         info!("Received identify info from {:?}", peer_id);
                         swarm.add_external_address(info.observed_addr.clone());
                     }
-                    BehaviourEvent::DirectMessage(e) => {
-                        match e {
-                            common::direct::DirectMessageEvent::MessageReceived {
-                                from,
-                                message,
-                            } => {
-                                let message_size = message.len(); // Get the size of the received message
-                                info!(
-                                    "got message from {}, {}",
-                                    from,
-                                    convert_bytes(message_size as f64)
-                                );
-                                if let Some(data_received) = data_received_per_tick.get_mut(&from) {
-                                    data_received.push_back(message_size); // Update the data_received_per_tick with the message size
-                                }
-                            }
-                            common::direct::DirectMessageEvent::MessageSent { to } => {
-                                info!("Sent message to {}", to);
-                            }
+                    BehaviourEvent::DirectMessage(req) => {
+                        if let libp2p::request_response::Event::Message {
+                            peer,
+                            message:
+                                libp2p::request_response::Message::Request {
+                                    request_id: _,
+                                    request: DisTrOData::Data(data),
+                                    channel,
+                                },
+                        } = req
+                        {
+                            let message_size = data.len();
+                            data_received_per_tick
+                                .entry(peer)
+                                .or_insert_with(|| VecDeque::new())
+                                .push_back(message_size);
+                            let _ = swarm
+                                .behaviour_mut()
+                                .direct_message
+                                .send_response(channel, DisTrOAck::Ack);
                         }
                     }
                     _ => debug!("Other behaviour event: {:?}", event),
@@ -277,7 +280,13 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
                 ..Default::default()
             },
         ),
-        direct_message: common::direct::DirectMessage::new(),
+        direct_message: common::DisTrOBehavior::new(
+            [(
+                StreamProtocol::new(common::REQ_RES_PROTOCOL),
+                ProtocolSupport::Full,
+            )],
+            Default::default(),
+        ),
     };
 
     let swarm = libp2p::SwarmBuilder::with_existing_identity(local_key)

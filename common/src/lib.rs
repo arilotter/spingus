@@ -5,11 +5,11 @@ use libp2p::{
     Multiaddr, PeerId, StreamProtocol,
 };
 use log::info;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tokio::fs;
-pub mod direct;
 pub const GOSSIPSUB_CHAT_TOPIC: &str = "test-app";
-pub const GOSSIPSUB_CHAT_FILE_TOPIC: &str = "test-app-file";
+pub const REQ_RES_PROTOCOL: &str = "/distro-update/0.1.0";
 pub const IDENTIFY_PROTO: &str = "/test-app/0.1.0";
 
 pub async fn read_or_create_identity(path: &Path) -> Result<identity::Keypair> {
@@ -69,3 +69,15 @@ pub fn decode_multiaddrs(bytes: &[u8]) -> Vec<Multiaddr> {
         .map(|addr| Multiaddr::try_from(addr).unwrap())
         .collect::<Vec<_>>()
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum DisTrOData {
+    Data(Vec<u8>),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum DisTrOAck {
+    Ack,
+}
+
+pub type DisTrOBehavior = libp2p::request_response::cbor::Behaviour<DisTrOData, DisTrOAck>;

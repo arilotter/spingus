@@ -1,12 +1,13 @@
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use common::{
-    create_kademlia_behavior, read_or_create_identity, GOSSIPSUB_CHAT_FILE_TOPIC,
-    GOSSIPSUB_CHAT_TOPIC, IDENTIFY_PROTO,
+    create_kademlia_behavior, read_or_create_identity, DisTrOData, GOSSIPSUB_CHAT_TOPIC,
+    IDENTIFY_PROTO, REQ_RES_PROTOCOL,
 };
 use futures::future::{select, Either};
 use futures::StreamExt;
 use libp2p::kad::{GetRecordOk, PeerRecord, Record};
+use libp2p::request_response::ProtocolSupport;
 use libp2p::{
     dcutr, gossipsub, identify, identity, kad,
     kad::record::store::MemoryStore,
@@ -16,8 +17,8 @@ use libp2p::{
     swarm::{NetworkBehaviour, Swarm, SwarmEvent},
     PeerId,
 };
-use libp2p::{noise, ping, swarm, yamux};
-use log::{debug, error, info, warn};
+use libp2p::{noise, ping, swarm, yamux, StreamProtocol};
+use log::{debug, info, warn};
 use rand::Rng; // Add this line
 use std::net::IpAddr;
 use std::path::Path;
@@ -55,7 +56,7 @@ struct Behaviour {
     connection_limits: memory_connection_limits::Behaviour,
     dcutr: dcutr::Behaviour,
     ping: ping::Behaviour,
-    direct_message: common::direct::DirectMessage,
+    direct_message: common::DisTrOBehavior,
 }
 
 #[tokio::main]
@@ -139,6 +140,15 @@ async fn main() -> Result<()> {
                         BehaviourEvent::Dcutr(e) => {
                             info!("Dcutr event: {:?}", e);
                         }
+                        BehaviourEvent::DirectMessage(r) => {
+                            if let libp2p::request_response::Event::Message {
+                                peer,
+                                message: libp2p::request_response::Message::Response { .. },
+                            } = r
+                            {
+                                info!("ack from {peer}");
+                            }
+                        }
                         BehaviourEvent::RelayClient(e) => {
                             match e {
                                 relay::client::Event::ReservationReqAccepted {
@@ -207,17 +217,6 @@ async fn main() -> Result<()> {
                                 }
                             }
                         }
-                        BehaviourEvent::DirectMessage(e) => match e {
-                            common::direct::DirectMessageEvent::MessageReceived {
-                                from,
-                                message,
-                            } => {
-                                info!("Received direct message from {}: {:?}", from, message);
-                            }
-                            common::direct::DirectMessageEvent::MessageSent { to } => {
-                                info!("Sent direct message to {}", to);
-                            }
-                        },
                     }
                 }
                 event => {
@@ -245,7 +244,7 @@ async fn main() -> Result<()> {
                         swarm
                             .behaviour_mut()
                             .direct_message
-                            .send_message(peer, data.clone());
+                            .send_request(&peer, DisTrOData::Data(data.clone()));
                         info!("Sent data to {:?}", peer);
                     }
                 }
@@ -268,7 +267,6 @@ fn make_gossipsub_behavior(keypair: identity::Keypair) -> Result<gossipsub::Beha
         .mesh_outbound_min(1)
         .mesh_n_low(1)
         .flood_publish(true)
-        .max_transmit_size(DATA_SIZE_MB * 1024 * 1024 * 2)
         .build()
         .expect("Valid config");
 
@@ -279,7 +277,7 @@ fn make_gossipsub_behavior(keypair: identity::Keypair) -> Result<gossipsub::Beha
     .expect("Correct configuration");
 
     gossipsub.subscribe(&gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_TOPIC))?;
-    gossipsub.subscribe(&gossipsub::IdentTopic::new(GOSSIPSUB_CHAT_FILE_TOPIC))?;
+    gossipsub.subscribe(&gossipsub::IdentTopic::new(REQ_RES_PROTOCOL))?;
 
     Ok(gossipsub)
 }
@@ -307,7 +305,13 @@ fn create_swarm(local_key: identity::Keypair) -> Result<Swarm<Behaviour>> {
             dcutr: dcutr::Behaviour::new(keypair.public().to_peer_id()),
             identify: identify_config,
             connection_limits: memory_connection_limits::Behaviour::with_max_percentage(0.9),
-            direct_message: common::direct::DirectMessage::new(), // Initialize the new DirectMessage behaviour
+            direct_message: common::DisTrOBehavior::new(
+                [(
+                    StreamProtocol::new(common::REQ_RES_PROTOCOL),
+                    ProtocolSupport::Full,
+                )],
+                Default::default(),
+            ),
         })?
         .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
         .build();
