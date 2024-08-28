@@ -194,6 +194,7 @@ async fn main() -> Result<()> {
                         } = req
                         {
                             let message_size = data.len();
+                            info!("got message from {peer}, {}", convert_bytes(message_size));
                             data_received_per_tick
                                 .entry(peer)
                                 .or_insert_with(|| VecDeque::new())
